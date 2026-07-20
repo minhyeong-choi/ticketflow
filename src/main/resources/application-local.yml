@@ -3,6 +3,12 @@ spring:
     url: jdbc:postgresql://localhost:5432/ticketflow
     username: ticketflow
     password: ticketflow
+  jpa:
+    hibernate:
+      # 스키마의 주인은 Flyway. Hibernate가 테이블을 건드리지 않고 검증만 하도록 고정
+      ddl-auto: validate
+    properties:
+      hibernate.format_sql: true
   data:
     redis:
       host: localhost
