@@ -1,1 +1,7 @@
+// 팀 전원이 Java 26 toolchain을 사용한다(로드맵/CLAUDE.md 확정 사항).
+// 로컬에 JDK 26이 없는 팀원도 빌드가 되도록 Gradle이 toolchain을 자동으로 받아오게 한다.
+plugins {
+	id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
 rootProject.name = 'ticketflow'
