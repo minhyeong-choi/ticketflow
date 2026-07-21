@@ -1,5 +1,7 @@
 # 02. 개발자 B 워크플로우 — `user` / `performance` / `waitingroom` / `notification`
 
+> ⚠️ **역할 분담 변경 주의 (2026-07-21)**: 이 문서는 **구 분담**(B=`user`/`performance`/`waitingroom`/`notification`) 기준입니다. 현재는 `user`와 `global`이 **A** 담당으로 이관되었습니다(`performance`/`waitingroom`/`notification`은 B 유지, B는 대신 `booking` 전체를 새로 담당). 최신 담당은 `docs/ROADMAP.md`의 "역할 분담" 섹션을 확인하세요. 이 문서의 `user`/`global` 관련 내용은 **A가** 참고하면 됩니다 — 엔티티 작성법·함정 해결 방법 등 기술적 how-to는 여전히 유효합니다.
+
 > **먼저 [00-common-workflow.md](00-common-workflow.md)를 읽으세요.** 이 문서는 그 내용을 안다고 가정합니다.
 
 ## B가 맡은 것

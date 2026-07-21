@@ -1,5 +1,7 @@
 # 01. 개발자 A 워크플로우 — `booking` / `payment`
 
+> ⚠️ **역할 분담 변경 주의 (2026-07-21)**: 이 문서는 **구 분담**(A=`booking`/`payment`) 기준입니다. 현재는 `booking`이 **B** 담당으로 이관되었습니다(`payment`는 A 유지, A는 대신 프론트엔드 전체+`user`+`global`을 담당). 최신 담당은 `docs/ROADMAP.md`의 "역할 분담" 섹션을 확인하세요. 이 문서의 `booking` 관련 내용은 **B가**, `payment` 관련 내용은 **A가** 참고하면 됩니다 — 엔티티 작성법·함정 해결 방법 등 기술적 how-to는 여전히 유효합니다.
+
 > **먼저 [00-common-workflow.md](00-common-workflow.md)를 읽으세요.** 이 문서는 그 내용을 안다고 가정합니다.
 
 ## A가 맡은 것

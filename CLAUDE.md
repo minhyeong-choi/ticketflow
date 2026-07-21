@@ -8,7 +8,7 @@ ticketFlow — 콘서트/뮤지컬 티켓팅 플랫폼. 3개월짜리 학습/포
 
 현재 상태: 스캐폴딩과 Flyway 스키마(V1)는 완료·검증되었고, JPA 엔티티·공통 인프라(`global/`)·인증은 아직 미착수 상태입니다(`domain/*`, `global/*` 하위는 `.gitkeep`만 존재).
 
-팀 협업 방식: 백엔드 2인이 기능 단위로 수직 분담합니다 — 개발자 A는 `booking`(예매/좌석 선점/확정), `payment`(Mock 결제)를 담당하고, 개발자 B는 `user`, `performance`(공연/좌석 카탈로그), `waitingroom`(가상 대기실), `notification`(Kafka consumer)을 담당합니다. 프론트엔드는 백엔드 개발자 중 1인이 AI 도구로 생성/유지보수합니다. 주차별 병렬 트랙은 `docs/ROADMAP.md`의 "A/B 병렬 트랙" 표가 기준입니다.
+팀 협업 방식(2026-07 재편): 개발자 A는 프론트엔드 전체(AI 도구로 생성/유지보수) + `user`(인증/JWT), `payment`(Mock 결제), `global`(공통 인프라)을 담당하고, 개발자 B는 동시성 코어와 카탈로그 — `performance`/`venue`/`seat`(카탈로그), `booking`(예매/좌석 선점/확정), `waitingroom`(가상 대기실), `notification`(Kafka consumer)을 담당합니다. 대기실·좌석 락·예매 확정이 하나의 동시성 흐름이라 B가 일관되게 소유합니다. 주차별 병렬 트랙과 Sync Point는 `docs/ROADMAP.md`의 "역할 분담" / "Sync Point" 표가 기준입니다.
 
 ## 자주 쓰는 명령어
 
@@ -94,7 +94,7 @@ curl localhost:8080/actuator/health
 2. 다른 도메인의 **엔티티 참조는 읽기 목적의 `@ManyToOne(fetch = LAZY)`까지만** 허용합니다.
 3. **다른 도메인의 상태 변경은 그 도메인이 제공하는 Service 메서드로만** 수행합니다.
 
-예: 예매 확정 시 `session_seat.status = 'SOLD'` UPDATE는 `booking`(A)이 실행하지만 대상은 `performance`(B) 소유입니다. `booking` 코드에서 `SessionSeatRepository`를 직접 쓰지 말고, B가 제공하는 `SessionSeatService.markAsSold(List<Long> sessionSeatIds)`를 호출하세요. 같은 이유로 A의 좌석 선점 API는 B가 제공하는 대기실 입장 토큰 검증 인터페이스를 호출합니다.
+예: 예매 확정 시 `session_seat.status = 'SOLD'` UPDATE는 `booking`이 실행하지만 대상은 `performance` 소유입니다(`booking`/`performance` 둘 다 B 담당이지만 도메인 패키지는 분리되어 있으므로 규칙은 동일하게 적용됩니다). `booking` 코드에서 `SessionSeatRepository`를 직접 쓰지 말고, `performance`가 제공하는 `SessionSeatService.markAsSold(List<Long> sessionSeatIds)`를 호출하세요. 같은 이유로 `booking`의 좌석 선점 API는 `waitingroom`이 제공하는 대기실 입장 토큰 검증 인터페이스를 호출합니다.
 
 이 규칙의 실질적 이점은 **한쪽이 인터페이스 시그니처만 먼저 커밋하면 상대는 구현 완료를 기다리지 않고 병렬로 작업할 수 있다**는 점입니다.
 
@@ -105,8 +105,8 @@ curl localhost:8080/actuator/health
 ```
 global/exception/ErrorCode.java          # interface (code, httpStatus, message)
 global/exception/CommonErrorCode.java    # enum implements ErrorCode — 공통만
-domain/user/exception/UserErrorCode.java         # B
-domain/booking/exception/BookingErrorCode.java   # A
+domain/user/exception/UserErrorCode.java         # A
+domain/booking/exception/BookingErrorCode.java   # B
 ```
 
 도메인별 enum은 담당자 본인만 수정하므로 충돌이 발생하지 않습니다.
@@ -121,12 +121,13 @@ domain/booking/exception/BookingErrorCode.java   # A
 
 | prefix | 담당 |
 |---|---|
-| `/api/auth/**`, `/api/users/**` | B |
+| `/api/auth/**`, `/api/users/**` | A |
+| `/api/payments/**` | A |
 | `/api/performances/**`, `/api/sessions/**` | B |
 | `/api/waiting/**` | B |
-| `/api/bookings/**`, `/api/payments/**` | A |
+| `/api/bookings/**` | B |
 
-좌석 **조회**는 `/api/sessions/{id}/seats`(B), 좌석 **선점/확정**은 `/api/bookings/**`(A)로 분리합니다.
+좌석 **조회**는 `/api/sessions/{id}/seats`(B), 좌석 **선점/확정**은 `/api/bookings/**`(B)로 분리합니다(둘 다 B 담당이지만 조회는 카탈로그, 선점/확정은 예매 도메인 소유이므로 패키지 경계는 유지합니다).
 
 ### 네이밍 확정 사항
 
@@ -135,7 +136,7 @@ domain/booking/exception/BookingErrorCode.java   # A
 
 ### Kafka 이벤트 DTO 위치
 
-이벤트 DTO는 A(발행)와 B(소비)가 공유하는 계약이므로, 어느 한쪽 도메인 패키지에 두면 반대쪽이 그 패키지를 import하게 됩니다. **`global/event/` 중립 패키지**에 정의하세요.
+이벤트 DTO는 `booking`(발행)과 `notification`(소비)이 공유하는 계약입니다. 둘 다 B 담당이지만 서로 다른 도메인 패키지이므로, 어느 한쪽 도메인 패키지에 두면 반대쪽이 그 패키지를 import하게 됩니다. **`global/event/` 중립 패키지**에 정의하세요.
 
 ### 브랜치 / 커밋
 
