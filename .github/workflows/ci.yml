@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    name: build & test
+    runs-on: ubuntu-latest
+
+    # 현재 TicketflowApplicationTests.contextLoads()는 실제 Postgres에 붙어 Flyway를 실행한다.
+    # 따라서 CI에도 인프라가 필요하다. Testcontainers를 도입하면(로드맵 3~4주차)
+    # 테스트가 컨테이너를 스스로 띄우므로 아래 services 블록은 제거할 수 있다.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ticketflow
+          POSTGRES_USER: ticketflow
+          POSTGRES_PASSWORD: ticketflow
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ticketflow -d ticketflow"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 팀 확정 사항: Java 26 (settings.gradle의 foojay resolver와 버전 일치)
+      - name: Set up JDK 26
+        uses: actions/setup-java@v4
+        with:
+          java-version: '26'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        run: ./gradlew build
+
+      # 실패 시 어느 테스트가 깨졌는지 바로 보이도록 리포트를 남긴다
+      - name: Upload test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: build/reports/tests/test
+          retention-days: 7
