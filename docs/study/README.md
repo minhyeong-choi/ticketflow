@@ -1,6 +1,6 @@
 # ticketFlow 개발 워크플로우 학습 문서
 
-> ⚠️ **역할 분담 변경 주의 (2026-07-21)**: 아래 01/02 문서는 **구 분담**(A=`booking`/`payment`, B=`user`/`performance`/`waitingroom`/`notification`) 기준으로 작성되었습니다. 이후 팀 역할이 **A=프론트엔드 전체+`user`(인증)+`payment`+`global`, B=`performance`+`booking`(대기실·좌석락·확정 포함)+`notification`**으로 재편되었습니다(현재 기준은 `docs/ROADMAP.md`의 "역할 분담" 섹션과 `CLAUDE.md`). 즉 **"01번 = A, 02번 = B"라는 문서 제목의 대응은 더 이상 맞지 않습니다** — `booking` 실습 내용은 이제 B가, `user` 실습 내용은 이제 A가 참고해야 합니다. 두 문서는 아직 새 분담에 맞춰 재작성되지 않았으니 **기술적인 how-to(엔티티 작성법, 함정 해결 방법 등)만 참고하고, 담당자 표기는 무시하세요.**
+> ✅ **역할 분담 재편 반영 완료 (2026-07-22)**: 01/02 문서는 `docs/ROADMAP.md`의 **"역할 분담 (2026-07 재편)"** 표에 맞춰 재작성되었습니다. 구 분담에서 A가 갖고 있던 `booking`(좌석 선점·예매 확정)은 **02번(B)**으로, B가 갖고 있던 `global`·`user`(인증/JWT)는 **01번(A)**으로 옮겼습니다. **담당 기준의 최종 근거는 언제나 `docs/ROADMAP.md`와 `CLAUDE.md`입니다.**
 
 이 폴더는 **"무엇을 만들지"가 아니라 "어떤 순서로, 어떻게 만들지"**를 설명하는 문서입니다.
 
@@ -13,8 +13,8 @@
 | 순서 | 문서 | 대상 | 내용 |
 |---|---|---|---|
 | 1 | [00-common-workflow.md](00-common-workflow.md) | **A, B 모두 필수** | 레이어 구조, 엔티티 작성법, DTO/예외/응답 규격, Git 흐름, 기능 하나 만드는 8단계 사이클 |
-| 2 | [01-developer-a-workflow.md](01-developer-a-workflow.md) | 개발자 A | `booking`, `payment` — 주차별 진행 순서 |
-| 2 | [02-developer-b-workflow.md](02-developer-b-workflow.md) | 개발자 B | `user`, `performance`, `waitingroom`, `notification` — 주차별 진행 순서 |
+| 2 | [01-developer-a-workflow.md](01-developer-a-workflow.md) | 개발자 A | 프론트엔드 전체, `global`(공통 인프라), `user`(인증/JWT), `payment`(Mock 결제) — 주차별 진행 순서 |
+| 2 | [02-developer-b-workflow.md](02-developer-b-workflow.md) | 개발자 B | `performance`(카탈로그), `waitingroom`(대기실), `booking`(좌석 선점·예매 확정), `notification`(Kafka) — 주차별 진행 순서 |
 
 **00번을 건너뛰지 마세요.** A/B 문서는 00번에서 설명한 용어와 패턴을 이미 안다고 가정하고 쓰여 있습니다.
 

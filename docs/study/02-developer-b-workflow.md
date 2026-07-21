@@ -1,6 +1,7 @@
-# 02. 개발자 B 워크플로우 — `user` / `performance` / `waitingroom` / `notification`
+# 02. 개발자 B 워크플로우 — `performance`(카탈로그) / `booking` / `waitingroom` / `notification`
 
-> ⚠️ **역할 분담 변경 주의 (2026-07-21)**: 이 문서는 **구 분담**(B=`user`/`performance`/`waitingroom`/`notification`) 기준입니다. 현재는 `user`와 `global`이 **A** 담당으로 이관되었습니다(`performance`/`waitingroom`/`notification`은 B 유지, B는 대신 `booking` 전체를 새로 담당). 최신 담당은 `docs/ROADMAP.md`의 "역할 분담" 섹션을 확인하세요. 이 문서의 `user`/`global` 관련 내용은 **A가** 참고하면 됩니다 — 엔티티 작성법·함정 해결 방법 등 기술적 how-to는 여전히 유효합니다.
+> 담당 기준은 **`docs/ROADMAP.md`의 "역할 분담 (2026-07 재편)"** 표입니다. 이 문서는 그 표를 그대로 따릅니다.
+> (2026-07-22 개정: 구 분담에서 B가 갖고 있던 `global`·`user`(인증/JWT)는 **A로 이관**되어 [01번 문서](01-developer-a-workflow.md)로 옮겼고, 구 분담에서 A가 갖고 있던 `booking`(좌석 선점·예매 확정)은 **B로 이관**되어 이 문서로 들어왔습니다.)
 
 > **먼저 [00-common-workflow.md](00-common-workflow.md)를 읽으세요.** 이 문서는 그 내용을 안다고 가정합니다.
 
@@ -8,75 +9,224 @@
 
 | 도메인 | 내용 |
 |---|---|
-| `global/` | 공통 응답·예외·시큐리티 기반 (**1주차에 확정 후 동결**) |
-| `domain/user` | 회원가입, 로그인, JWT 인증 |
-| `domain/performance` | 공연/회차/좌석 카탈로그 + 시드 데이터 |
+| `domain/performance` | 공연/공연장/회차/좌석 **카탈로그** + 시드 데이터 (`Venue`·`VenueSeat`·`SeatGrade`·`SessionSeat` 포함) |
 | `domain/waitingroom` | 가상 대기실 (Redis ZSET) |
+| `domain/booking` | **좌석 선점(분산 락), 예매 확정(T1/T2), 취소, 예매 내역** |
 | `domain/notification` | Kafka consumer + 알림 적재 |
-| API 경로 | `/api/auth/**`, `/api/users/**`, `/api/performances/**`, `/api/sessions/**`, `/api/waiting/**` |
+| API 경로 | `/api/performances/**`, `/api/sessions/**`, `/api/waiting/**`, `/api/bookings/**` |
 
-**B는 "A를 막지 않는 것"이 가장 중요한 역할입니다.** 시드 데이터가 없으면 A는 좌석 선점을 개발도 테스트도 못 하고, 대기실 토큰 검증 시그니처가 없으면 A의 좌석 선점 API가 컴파일되지 않습니다. **구현보다 시그니처와 데이터를 먼저 내보내세요.**
+**B는 이 프로젝트의 동시성 코어를 통째로 소유합니다.** 대기실 → 좌석 선점 → 예매 확정이 하나의 흐름이고, 이걸 두 사람이 나누면 락·트랜잭션 버그가 반드시 납니다. 그래서 B가 일관되게 갖습니다. **포트폴리오에서 "Redis 분산락·대기열·Kafka·부하 대응"을 말할 수 있는 사람이 B입니다.**
+
+대신 난도가 높으므로 **3~4주차까지 상대적으로 여유가 있을 때 5주차 이후를 준비하는 것**이 이 문서의 전략입니다.
 
 ## 전체 일정
 
-| 주차 | 할 일 | A에게 미치는 영향 |
+| 주차 | 할 일 | 산출물 / A와의 관계 |
 |---|---|---|
-| 1~2 | `global/` 확정 → **시드 데이터** → 인증(JWT) | 시드가 없으면 A는 5주차에 아무것도 못 함 |
-| 3~4 | 공연/회차/좌석 조회 API | 프론트(A)가 붙일 대상 |
-| 5~6 | 가상 대기실 — **시그니처 선(先)커밋** | 토큰 검증 메서드가 A의 컴파일 조건 |
-| 7~8 | Kafka + `notification` — **이벤트 DTO 선(先)정의** | A가 발행 코드를 붙일 계약 |
-| 9~10 | 프론트 예매 플로우 연동 + DLQ/멱등성 | |
-| 11~12 | 부하 테스트 / 마무리 (공동) | |
+| 1~2 | 카탈로그·예매 엔티티 8종 + **시드 데이터** | 앱이 뜬다 = 스키마 정합성 증명 |
+| 3~4 | 카탈로그 조회 API + **OpenAPI 명세 확정** | A의 프론트가 Mock→실 API로 전환하는 근거 (SP2) |
+| 5~6 | 가상 대기실 (Redis ZSET) + 좌석 락 PoC | 락 동작 원리를 손으로 확인 (SP3) |
+| 7~8 | **좌석 선점 + 예매 확정 T1/T2 + 취소** ★ 최난도 | 동시 요청에 1건만 성공 (SP4) |
+| 9~10 | Kafka + `notification` + 예매 내역 + **동시성 통합 테스트** | "중복 예매 0건" 증명 (SP5) |
+| 11~12 | 부하 테스트 리드 / 마무리 (공동) | |
+
+## A와 주고받는 계약 (미리 알아두세요)
+
+| 계약 | 제공 | 사용 | 언제까지 |
+|---|---|---|---|
+| `ApiResponse` / `ErrorCode` / `BusinessException` / `GlobalExceptionHandler` | A | **B** | 1주차 Day 1 |
+| `BaseCreatedEntity` / `BaseTimeEntity` | A | **B** (엔티티 8종) | 1주차 Day 1 |
+| `User` 엔티티 | A | **B** (`Booking`이 `@ManyToOne` 참조) | 1주차 Day 2 |
+| `CustomUserDetails`에서 `userId` 꺼내는 법 | A | **B** (모든 인증 API) | SP1 (2주차 말) |
+| `PaymentService.pay(bookingId, amount)` | A | **B** (`BookingFacade`가 호출) | 6주차 말 |
+| `SecurityConfig` 화이트리스트에 B 경로 추가 | A | **B** | 필요할 때마다 요청 |
+| **시드 데이터** | **B** | A (프론트가 볼 실데이터) | 2주차 말 |
+| **OpenAPI 명세** | **B** | A (프론트 Mock→실 API) | SP2 (4주차 말) |
+| 좌석 락 TTL / 입장 토큰 TTL / 결제 제한시간 | **B가 결정** | A (화면 타이머) | 7주차 전 |
+
+> **`global/` 하위는 A 소유이자 공유 기반입니다.** `SecurityConfig`에 경로를 추가해야 하면 직접 고치지 말고 A에게 요청하세요(`CLAUDE.md` 규칙).
 
 ---
 
-# 1~2주차 — 기반 확정 → 시드 → 인증
+# 1~2주차 — 엔티티 8종 + 시드 데이터
 
-같은 기간에 A는 엔티티 10종을 작성합니다(`domain/user/entity/User.java` 포함). **파일이 겹치지 않으니 충돌 없이 병렬 진행됩니다.** A가 Day 2에 엔티티를 머지하면 B는 그때부터 `User`를 쓸 수 있습니다.
+## 시작 전: A를 기다려야 하는 것 / 기다리지 않아도 되는 것
 
-## Day 1~2: `global/` 공통 인프라 확정 ★ 우선순위 1위
+| 작업 | A 의존 | 지금 바로 가능? |
+|---|---|---|
+| 엔티티 8종 | `Base*Entity`, `User` **필요** | A의 Day 1~2 머지 후 |
+| **시드 데이터** | **없음** (`JdbcTemplate` + 순수 SQL) | ✅ **바로 시작 가능** |
+| 카탈로그 Repository | 엔티티 필요 | 엔티티 후 |
 
-**A와 B가 모두 이 위에 코드를 얹습니다.** 늦게 확정될수록 나중에 전부 고쳐야 하니 **가장 먼저, 하루 만에** 끝내세요. 완벽하지 않아도 됩니다 — 확정되는 것 자체가 가치입니다.
+**A가 아직 안 올렸다면 시드부터 시작하세요.** 시드는 엔티티도 `global/`도 쓰지 않습니다.
+
+## Day 1~3: 카탈로그·예매 엔티티 8종
+
+### 작업 순서 (FK 의존 순서대로)
+
+의존하는 쪽을 먼저 만들어야 참조할 대상이 있습니다.
+
+```
+[A 담당 — 먼저 머지되어 있어야 함]
+   BaseCreatedEntity / BaseTimeEntity
+   User
+
+[B 담당]
+1. Venue                 (의존 없음)
+2. VenueSeat             → Venue
+3. Performance           → Venue
+4. SeatGrade             → Performance
+5. PerformanceSession    → Performance          ★ 클래스명 주의
+6. SessionSeat           → PerformanceSession, VenueSeat, SeatGrade
+7. Booking               → User(A), PerformanceSession
+8. BookingSeat           → Booking, SessionSeat
+
+[A 담당 — B의 Booking 머지 후]
+   Payment               → Booking
+```
 
 ### 만들 파일
 
 ```
-global/common/ApiResponse.java
-global/exception/ErrorCode.java              # ★ interface (enum 아님)
-global/exception/CommonErrorCode.java        # enum implements ErrorCode
-global/exception/BusinessException.java
-global/exception/GlobalExceptionHandler.java
-global/event/                                # 빈 패키지 + .gitkeep (7주차 Kafka DTO 자리)
+domain/performance/entity/Venue.java
+domain/performance/entity/VenueSeat.java
+domain/performance/entity/Performance.java
+domain/performance/entity/PerformanceStatus.java
+domain/performance/entity/Genre.java
+domain/performance/entity/SeatGrade.java
+domain/performance/entity/PerformanceSession.java
+domain/performance/entity/SessionStatus.java
+domain/performance/entity/SessionSeat.java
+domain/performance/entity/SessionSeatStatus.java
+
+domain/booking/entity/Booking.java
+domain/booking/entity/BookingStatus.java
+domain/booking/entity/BookingSeat.java
+domain/booking/entity/BookingSeatStatus.java
 ```
 
-**코드는 [00번 문서 8장](00-common-workflow.md#8-공통-응답--예외-처리-규격)에 그대로 있습니다.** 그대로 만드세요.
+> `Venue`, `VenueSeat`는 `performance` 도메인에 둡니다. 공연장은 B의 공연 카탈로그에 속한 마스터 데이터이고, 별도 패키지를 만들면 소유가 애매해집니다.
 
-### 왜 `ErrorCode`가 interface여야 하는지 다시 확인
+### 반드시 지킬 것 ([00번 문서 3장](00-common-workflow.md#3-entity-작성법--이-프로젝트에서-가장-조심할-부분) 요약)
 
-단일 enum이면 A가 `SEAT_ALREADY_HELD`를 추가하고 B가 `DUPLICATE_EMAIL`을 추가할 때 **같은 파일의 같은 위치를 고쳐 매번 머지 충돌**이 납니다. interface로 쪼개면 각자 자기 파일만 건드립니다.
+- `@Table(name = "session")` 처럼 **클래스명과 테이블명이 다르면 명시**
+- `TIMESTAMPTZ` → **`OffsetDateTime`** (`LocalDateTime` 금지)
+- 시간 컬럼 유무에 따라 `BaseTimeEntity` / `BaseCreatedEntity` / **상속 없음** (00번 문서의 표를 그대로 따르세요)
+- 모든 `@ManyToOne`에 `fetch = FetchType.LAZY`
+- 모든 enum에 `@Enumerated(EnumType.STRING)`
+- `@Setter` 금지, `@Builder`는 `private` 생성자에
 
+### 특히 조심할 엔티티 3개
+
+#### ① `PerformanceSession` — 클래스명과 테이블명이 다릅니다
+
+```java
+@Entity
+@Table(name = "session")        // ★ 테이블은 session, 클래스는 PerformanceSession
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class PerformanceSession extends BaseCreatedEntity {
+
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "performance_id", nullable = false)
+    private Performance performance;
+
+    @Column(name = "session_at", nullable = false)
+    private OffsetDateTime sessionAt;
+
+    @Column(name = "booking_open_at", nullable = false)
+    private OffsetDateTime bookingOpenAt;
+
+    @Column(name = "booking_close_at", nullable = false)
+    private OffsetDateTime bookingCloseAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private SessionStatus status;
+    ...
+}
 ```
-global/exception/ErrorCode.java             ← interface, 동결
-global/exception/CommonErrorCode.java       ← 공통만, 변경 시 상대 리뷰
-domain/user/exception/UserErrorCode.java    ← B만 수정
-domain/booking/exception/BookingErrorCode.java ← A만 수정
+
+Java 클래스명을 `Session`으로 지으면 `org.hibernate.Session`, `jakarta.servlet.http.HttpSession`과 import가 뒤섞여 매번 헷갈립니다. **A/B 둘 다 참조하는 엔티티라 나중에 이름을 바꾸면 두 사람 코드가 동시에 흔들립니다.**
+
+#### ② `SessionSeat` — 상속 없음, 상태는 2개뿐
+
+```java
+@Entity
+@Table(name = "session_seat")
+public class SessionSeat {                  // ★ BaseTimeEntity 상속하면 앱이 안 뜬다
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private SessionSeatStatus status;       // AVAILABLE, SOLD 뿐. HELD 없음
+    ...
+}
 ```
 
-### 확정 후 규칙
+`HELD`(선점 중) 상태가 없는 게 이 프로젝트 설계의 핵심입니다. **임시 점유는 Redis TTL이 전담하고, DB는 영구 상태만 기록**합니다. 나중에 "선점 중 표시를 하려면 HELD가 있어야 하지 않나?" 싶어도 **추가하지 마세요.** Redis 락이 만료되거나 서버가 죽으면 DB의 HELD가 영원히 남아 좌석이 증발합니다.
 
-**`global/` 하위는 머지 이후 동결입니다.** 변경이 필요하면 상대 리뷰를 거치세요. 기능 개발 중에 `ApiResponse` 필드를 슬쩍 바꾸면 상대의 모든 API가 동시에 깨집니다.
+`session_seat`·`booking_seat`에 시간 컬럼이 없는 것도 누락이 아니라, **회차당 수천 건이 벌크 생성되는 테이블이라 행 크기를 줄인 의도적 설계**입니다.
 
-**PR**: `feat: 공통 응답 포맷 및 예외 처리 기반 구축` → A 리뷰 후 즉시 머지
+#### ③ `Booking` — 상태 변경 메서드를 미리 만들어 두세요
+
+```java
+@Entity
+@Table(name = "booking")
+public class Booking extends BaseCreatedEntity {
+
+    @Column(name = "booking_number", nullable = false, length = 30)
+    private String bookingNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private BookingStatus status;
+
+    @Column(name = "booked_at")
+    private OffsetDateTime bookedAt;
+
+    @Column(name = "cancelled_at")
+    private OffsetDateTime cancelledAt;
+
+    // 7~8주차에 쓸 상태 전이 메서드 — 지금 만들어 두면 나중에 흐름이 명확해집니다
+    public void confirm() {
+        this.status = BookingStatus.CONFIRMED;
+        this.bookedAt = OffsetDateTime.now();
+    }
+
+    public void cancel() {
+        this.status = BookingStatus.CANCELLED;
+        this.cancelledAt = OffsetDateTime.now();
+    }
+}
+```
+
+### 완료 확인
+
+```bash
+docker compose up -d
+./gradlew bootRun
+```
+
+`Started TicketflowApplication in X seconds`가 뜨면 **엔티티가 스키마와 100% 일치한다는 증명**입니다. 이 로그를 PR 본문에 붙이세요.
+
+에러가 나면 [00번 문서의 에러 표](00-common-workflow.md#11-자주-만나는-에러와-읽는-법)를 보세요. 대부분 `missing column` 또는 `wrong column type`이고, `V1__init.sql`과 한 줄씩 대조하면 5분 안에 찾습니다.
+
+**PR**: `feat: 카탈로그/예매 도메인 JPA 엔티티 8종 추가` → A 리뷰 후 즉시 머지
 
 ---
 
-## Day 3~5: 시드 데이터 ★ A의 블로커 — 인증보다 먼저
+## Day 4~7: 시드 데이터 ★ 1~2주차 최우선
 
-### 왜 인증보다 먼저인가
+### 왜 최우선인가
 
 `session_seat` 데이터가 없으면:
-- A는 좌석 선점을 개발할 수도, 테스트할 수도 없습니다
-- B 본인의 3~4주차 조회 API도 만들 수 없습니다
+
+- **B 본인의 3~4주차 조회 API**를 만들 수도 테스트할 수도 없습니다
+- **B 본인의 7~8주차 좌석 선점**도 마찬가지입니다
+- A의 프론트는 SP2에서 붙일 실데이터가 없습니다
 - 11주차 부하 테스트 데이터도 여기서 나옵니다
 
 **공연장 좌석은 수백~수천 건이라 수동 INSERT가 불가능합니다.**
@@ -93,8 +243,10 @@ domain/booking/exception/BookingErrorCode.java ← A만 수정
 ### 만들 파일
 
 ```
-global/config/SeedDataRunner.java     # 또는 domain/performance/support/
+domain/performance/support/SeedDataRunner.java
 ```
+
+> 위치 주의: 구 문서는 `global/config/`를 제안했지만, **`global/`은 A 소유**입니다. 시드는 카탈로그 데이터를 만드는 B의 코드이므로 `domain/performance/support/`에 두세요.
 
 ```java
 @Slf4j
@@ -120,6 +272,8 @@ public class SeedDataRunner implements CommandLineRunner {
     }
 }
 ```
+
+> **테스트 계정(`users`)은 A의 회원가입 API가 뜬 뒤 `curl`로 만드는 편이 낫습니다.** 시드에서 직접 INSERT하면 BCrypt 해시를 손으로 만들어야 하고, A의 비밀번호 정책과 어긋날 수 있습니다.
 
 ### ★ 가장 중요한 기술 포인트: 벌크 INSERT
 
@@ -172,7 +326,7 @@ JOIN seat_grade sg  ON sg.performance_id = p.id
 WHERE s.id = ?;
 ```
 
-`section` 문자열로 등급을 정하는 이 `CASE`문이 **"어느 물리 좌석이 어느 등급인가"의 매핑 규칙**입니다(V1__init.sql 주석에 언급된 부분). 규칙을 바꾸고 싶으면 여기만 고치면 됩니다.
+`section` 문자열로 등급을 정하는 이 `CASE`문이 **"어느 물리 좌석이 어느 등급인가"의 매핑 규칙**입니다(`V1__init.sql` 주석에 언급된 부분). 규칙을 바꾸고 싶으면 여기만 고치면 됩니다.
 
 ### 생성할 데이터 규모
 
@@ -184,7 +338,6 @@ WHERE s.id = ?;
 | `seat_grade` | 공연당 4종 (VIP/R/S/A) |
 | `session` | 공연당 3~5회차 |
 | `session_seat` | 회차 × 1,200 |
-| `users` | 테스트 계정 2~3개 |
 
 > **`booking_open_at`을 다양하게 두세요.** 이미 열린 회차(과거), 곧 열릴 회차(몇 분 후), 나중 회차(내일)를 섞어야 5~6주차 대기실 로직을 테스트할 수 있습니다.
 
@@ -197,276 +350,16 @@ docker compose exec postgres psql -U ticketflow -d ticketflow \
              (SELECT count(*) FROM session_seat) AS 판매좌석;"
 ```
 
-**A에게 바로 알리세요.** "시드 완료, `session_seat` N건 생성됨"이 A의 5주차 착수 신호입니다.
+**A에게 바로 알리세요.** "시드 완료, `session_seat` N건 생성됨"이면 A는 프론트에서 실제 좌석 수를 기준으로 화면을 설계할 수 있습니다.
 
 **PR**: `feat: local 프로필 시드 데이터 생성기 구현`
 
----
-
-## Day 6~10: 회원가입 / 로그인 / JWT
-
-### 만들 파일
-
-```
-global/config/SecurityConfig.java
-global/security/JwtTokenProvider.java
-global/security/JwtAuthenticationFilter.java
-global/security/CustomUserDetails.java
-global/security/JwtAuthenticationEntryPoint.java
-
-domain/user/repository/UserRepository.java
-domain/user/service/AuthService.java
-domain/user/service/UserService.java
-domain/user/controller/AuthController.java
-domain/user/controller/UserController.java
-domain/user/dto/SignupRequest.java
-domain/user/dto/LoginRequest.java
-domain/user/dto/TokenResponse.java
-domain/user/dto/UserResponse.java
-domain/user/exception/UserErrorCode.java
-```
-
-### 먼저 정할 것 (로드맵 확정안)
-
-| 항목 | 결정 |
-|---|---|
-| Access Token 만료 | **30분** |
-| Refresh Token | **MVP에서는 생략** (핵심이 동시성이지 인증이 아님) |
-| 전달 방식 | `Authorization: Bearer {token}` 헤더 |
-| 서명 알고리즘 | HS256 (대칭키) |
-| secret 관리 | **환경변수 주입** |
-| 비밀번호 | BCrypt |
-
-### ⚠️ 검색 전 반드시 읽을 것
-
-인터넷 예제 대부분이 **Spring Security 5.x / jjwt 0.11.x** 기준이라 그대로는 컴파일되지 않습니다.
-
-| 옛날 코드 | 이 프로젝트 |
-|---|---|
-| `extends WebSecurityConfigurerAdapter` | **제거됨.** `SecurityFilterChain` 빈 등록만 |
-| `.antMatchers("/api/**")` | **제거됨.** `.requestMatchers(...)` |
-| `http.csrf().disable()` | 람다 DSL: `http.csrf(csrf -> csrf.disable())` |
-| `Jwts.parserBuilder()` | **`Jwts.parser()`** |
-| `.parseClaimsJws(token)` | **`.parseSignedClaims(token)`** |
-| `.setSubject(...)` `.setExpiration(...)` | **`.subject(...)` `.expiration(...)`** |
-
-### (1) 시크릿을 환경변수로
-
-```yaml
-# application-local.yml
-jwt:
-  secret: ${JWT_SECRET:local-dev-only-secret-key-must-be-at-least-32-bytes-long}
-  access-token-validity: 1800000   # 30분(ms)
-```
-
-`${환경변수:기본값}` 문법이라 로컬에서는 환경변수 없이도 뜨고, 배포 시에는 환경변수가 우선합니다.
-
-> **HS256은 최소 256비트(32바이트) 키가 필요합니다.** 짧으면 기동 시 `WeakKeyException`이 납니다.
-> 참고로 `application-local.yml`의 DB 비밀번호도 평문 커밋 상태입니다(로드맵 미해결 항목). JWT secret을 넣는 김에 같은 방식으로 정리하세요.
-
-### (2) `JwtTokenProvider` (jjwt 0.12.6)
-
-```java
-@Component
-public class JwtTokenProvider {
-
-    private final SecretKey key;
-    private final long validityMillis;
-
-    public JwtTokenProvider(@Value("${jwt.secret}") String secret,
-                            @Value("${jwt.access-token-validity}") long validityMillis) {
-        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-        this.validityMillis = validityMillis;
-    }
-
-    public String createToken(Long userId, String email, Role role) {
-        Date now = new Date();
-        return Jwts.builder()
-                .subject(String.valueOf(userId))          // 0.12: setSubject → subject
-                .claim("email", email)
-                .claim("role", role.name())
-                .issuedAt(now)
-                .expiration(new Date(now.getTime() + validityMillis))
-                .signWith(key)
-                .compact();
-    }
-
-    public Claims parse(String token) {
-        return Jwts.parser()                              // 0.12: parserBuilder() → parser()
-                .verifyWith(key)
-                .build()
-                .parseSignedClaims(token)                 // 0.12: parseClaimsJws → parseSignedClaims
-                .getPayload();
-    }
-
-    /** 만료와 위조를 구분해야 프론트가 "재로그인" 안내를 정확히 할 수 있습니다 */
-    public TokenStatus validate(String token) {
-        try {
-            parse(token);
-            return TokenStatus.VALID;
-        } catch (ExpiredJwtException e) {
-            return TokenStatus.EXPIRED;
-        } catch (JwtException | IllegalArgumentException e) {
-            return TokenStatus.INVALID;
-        }
-    }
-}
-```
-
-> **토큰에 비밀번호나 민감 정보를 넣지 마세요.** JWT의 payload는 암호화가 아니라 **Base64 인코딩**일 뿐이라 누구나 디코딩해서 읽을 수 있습니다. 서명은 "위조 방지"이지 "내용 숨김"이 아닙니다. https://jwt.io 에 토큰을 붙여넣어 직접 확인해 보세요.
-
-### (3) `JwtAuthenticationFilter`
-
-```java
-@Component
-@RequiredArgsConstructor
-public class JwtAuthenticationFilter extends OncePerRequestFilter {
-
-    private final JwtTokenProvider tokenProvider;
-
-    @Override
-    protected void doFilterInternal(HttpServletRequest request,
-                                    HttpServletResponse response,
-                                    FilterChain chain) throws ServletException, IOException {
-        String token = resolveToken(request);
-
-        if (token != null && tokenProvider.validate(token) == TokenStatus.VALID) {
-            Claims claims = tokenProvider.parse(token);
-            CustomUserDetails principal = new CustomUserDetails(
-                    Long.valueOf(claims.getSubject()),
-                    claims.get("email", String.class),
-                    Role.valueOf(claims.get("role", String.class)));
-
-            var authentication = new UsernamePasswordAuthenticationToken(
-                    principal, null, principal.getAuthorities());
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-        }
-
-        chain.doFilter(request, response);   // ★ 토큰이 없거나 틀려도 여기서 막지 않습니다
-    }
-
-    private String resolveToken(HttpServletRequest request) {
-        String header = request.getHeader(HttpHeaders.AUTHORIZATION);
-        return (header != null && header.startsWith("Bearer ")) ? header.substring(7) : null;
-    }
-}
-```
-
-> **필터에서 직접 401을 내리지 마세요.** 필터는 "인증 정보를 채우는 역할"만 하고, 접근 차단 판단은 `authorizeHttpRequests`에 맡깁니다. 필터에서 막으면 화이트리스트 경로(`/api/auth/login`)까지 토큰을 요구하게 됩니다. **초심자가 가장 많이 틀리는 부분입니다.**
-
-### (4) `SecurityConfig` (Spring Security 7.1)
-
-```java
-@Configuration
-@EnableWebSecurity
-@RequiredArgsConstructor
-public class SecurityConfig {
-
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final JwtAuthenticationEntryPoint entryPoint;
-
-    @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        return http
-                .csrf(csrf -> csrf.disable())          // JWT는 stateless라 CSRF 불필요
-                .cors(Customizer.withDefaults())       // 프론트가 다른 오리진일 때 필요
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**", "/actuator/health").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/performances/**", "/api/sessions/**").permitAll()
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .anyRequest().authenticated())
-                .exceptionHandling(e -> e.authenticationEntryPoint(entryPoint))
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
-                .build();
-    }
-
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173"));   // 프론트 주소 (A와 합의)
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("*"));
-        config.setAllowCredentials(true);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
-    }
-}
-```
-
-**`requestMatchers` 순서가 중요합니다.** 위에서부터 매칭되므로 `anyRequest()`는 항상 마지막입니다.
-
-### (5) 인증 실패 응답을 JSON으로
-
-기본 설정에서는 401 응답이 **HTML 로그인 페이지**로 나옵니다. 프론트가 파싱하지 못하니 JSON으로 바꿉니다.
-
-```java
-@Component
-@RequiredArgsConstructor
-public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
-
-    private final ObjectMapper objectMapper;
-
-    @Override
-    public void commence(HttpServletRequest request, HttpServletResponse response,
-                         AuthenticationException e) throws IOException {
-        response.setStatus(HttpStatus.UNAUTHORIZED.value());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-        response.setCharacterEncoding("UTF-8");
-        objectMapper.writeValue(response.getWriter(),
-                ApiResponse.fail(CommonErrorCode.UNAUTHORIZED.getCode(),
-                                 CommonErrorCode.UNAUTHORIZED.getMessage()));
-    }
-}
-```
-
-> **`GlobalExceptionHandler`는 여기서 동작하지 않습니다.** 시큐리티 필터는 `DispatcherServlet`보다 **앞**에 있어서 `@RestControllerAdvice`가 잡지 못합니다. 이 구조를 모르면 "왜 예외 핸들러가 안 먹지?"로 반나절을 날립니다.
-
-### (6) API
-
-| 메서드 | 경로 | 인증 | 설명 |
-|---|---|---|---|
-| `POST` | `/api/auth/signup` | ❌ | 회원가입 |
-| `POST` | `/api/auth/login` | ❌ | 로그인 → 토큰 |
-| `GET` | `/api/users/me` | ✅ | 내 정보 |
-
-회원가입 시 **이메일 중복 검사**를 꼭 넣으세요. `uq_users_email` 제약이 있어 안 넣어도 DB가 막지만, 사용자에게 "이미 가입된 이메일입니다"라고 알려주려면 서비스에서 먼저 확인해야 합니다.
-
-로그인 실패 메시지는 **"이메일 또는 비밀번호가 올바르지 않습니다"** 하나로 통일하세요. "존재하지 않는 이메일"과 "비밀번호 불일치"를 구분해서 알려주면 가입된 이메일 목록을 알아낼 수 있습니다.
-
-### 완료 확인
-
-```bash
-# 가입
-curl -X POST localhost:8080/api/auth/signup -H "Content-Type: application/json" \
-  -d '{"email":"test@test.com","password":"password1","name":"홍길동"}'
-
-# 로그인 → 토큰 획득
-TOKEN=$(curl -s -X POST localhost:8080/api/auth/login -H "Content-Type: application/json" \
-  -d '{"email":"test@test.com","password":"password1"}' | jq -r '.data.accessToken')
-
-# 인증 필요 API
-curl localhost:8080/api/users/me -H "Authorization: Bearer $TOKEN"
-
-# 토큰 없이 호출 → JSON 형태의 401 인지 확인
-curl -i localhost:8080/api/users/me
-```
-
-**PR**: `feat: JWT 기반 회원가입/로그인 및 시큐리티 설정 구현`
-
 ### 1~2주차 완료 기준
-회원가입 → 로그인 → `/api/users/me` 성공 + 시드 데이터로 공연/좌석 조회 가능
+앱이 뜬다(= 엔티티 정합성 증명) + 시드 데이터로 공연/회차/좌석이 DB에 존재한다
 
 ---
 
-# 3~4주차 — 공연 / 회차 / 좌석 조회 API
+# 3~4주차 — 카탈로그 조회 API → SP2
 
 ## API 목록
 
@@ -474,7 +367,10 @@ curl -i localhost:8080/api/users/me
 |---|---|---|
 | `GET` | `/api/performances?page=0&size=20` | 공연 목록 (페이징) |
 | `GET` | `/api/performances/{id}` | 공연 상세 + 회차 목록 |
+| `GET` | `/api/sessions/{id}/seats/summary` | 등급/구역별 잔여 수 |
 | `GET` | `/api/sessions/{id}/seats` | 좌석 배치도 + 잔여 상태 |
+
+**이 4개의 요청/응답 스펙이 SP2의 산출물입니다.** A가 이 명세로 프론트를 Mock 선행하고 SP2에서 실 API로 갈아끼웁니다. **구현이 덜 끝났어도 명세는 4주차 말에 확정해서 전달하세요.**
 
 ## (1) 목록 — 페이징
 
@@ -519,6 +415,8 @@ Page<Performance> findAllWithVenue(Pageable pageable);
 
 > **주의**: `join fetch`와 `Pageable`을 컬렉션(`@OneToMany`)에 함께 쓰면 Hibernate가 메모리에서 페이징해서 경고가 뜹니다. `@ManyToOne`(단일 연관)의 `join fetch`는 안전합니다. 컬렉션이 필요하면 `@BatchSize`를 쓰세요.
 
+> **`open-in-view: false`입니다.** 지연 로딩은 트랜잭션(서비스 계층) 안에서만 동작하므로, **DTO 변환을 서비스 계층에서 끝내세요.** 컨트롤러에서 LAZY 필드에 접근하면 `LazyInitializationException`이 납니다.
+
 ## (3) 좌석 배치도 — 이 프로젝트에서 가장 트래픽이 몰리는 API ★
 
 **대기실을 통과한 사용자가 가장 먼저 호출하는 API**입니다. 여기가 느리면 대기실을 만든 의미가 없습니다.
@@ -545,7 +443,7 @@ public record SeatSummaryResponse(
 
 ### 대응 2 — 필드를 최대한 줄입니다
 
-좌석 하나당 필드가 10개면 1,200석 × 10입니다. 프론트가 실제로 쓰는 것만 남기세요.
+좌석 하나당 필드가 10개면 1,200석 × 10입니다. 프론트가 실제로 쓰는 것만 남기세요. **A와 합의해서 결정하세요** — 프론트가 안 쓰는 필드를 내보내는 건 순수한 낭비입니다.
 
 ```java
 // 좌석 하나 = 6개 필드로 충분
@@ -564,9 +462,9 @@ public SeatMapResponse getSeatMap(Long sessionId) { ... }
 
 `@EnableCaching` + Redis CacheManager 설정이 필요합니다. **11주차 부하 테스트에서 "캐시 전/후" 비교표를 만들면 훌륭한 포트폴리오 소재**가 됩니다.
 
-## (4) A에게 제공할 Service 시그니처 ★ 5주차 전까지 필수
+## (4) 도메인 경계용 Service 시그니처 ★ 7주차 전까지 필수
 
-A의 좌석 선점/예매 확정 코드는 **B의 `SessionSeatService`를 호출**합니다. **구현 전에 시그니처만이라도 먼저 커밋하세요.**
+B의 `booking` 코드는 `performance` 소유인 `session_seat`를 건드려야 합니다. **둘 다 B 담당이지만 도메인 패키지가 다르므로 `CLAUDE.md` 규칙은 동일하게 적용됩니다** — `booking`에서 `SessionSeatRepository`를 직접 주입하지 말고 `SessionSeatService`를 경유하세요.
 
 ```java
 // domain/performance/service/SessionSeatService.java
@@ -579,7 +477,7 @@ public class SessionSeatService {
     /** 예매에 필요한 좌석 정보(가격 포함) 조회 */
     public List<SeatPriceInfo> findForBooking(Long sessionId, List<Long> sessionSeatIds) { ... }
 
-    /** 예매 확정 시 SOLD 로 변경 (A가 T2에서 호출) */
+    /** 예매 확정 시 SOLD 로 변경 (T2에서 호출) */
     @Transactional
     public void markAsSold(List<Long> sessionSeatIds) { ... }
 
@@ -590,23 +488,25 @@ public class SessionSeatService {
 ```
 
 ```java
-// 도메인 경계를 넘는 DTO — A가 쓰므로 record 로 단순하게
+// 도메인 경계를 넘는 DTO — record 로 단순하게
 public record SeatPriceInfo(Long sessionSeatId, String gradeName, int price) {}
 ```
 
-**A가 `SessionSeatRepository`를 직접 주입하는 것은 `CLAUDE.md` 위반입니다.** 대신 필요한 메서드를 요청받으면 여기에 추가해 주세요.
+> **"어차피 내가 다 만드는데 왜 굳이?"** — 경계를 지키면 나중에 카탈로그 캐싱을 넣거나 좌석 상태 변경 로직을 바꿀 때 **한 곳만 고치면 됩니다.** 그리고 이 구조 자체가 면접에서 설명할 거리가 됩니다.
 
 **PR**: `feat: 공연/회차/좌석 조회 API 구현`
 
+**완료 기준**: 프론트(A)에서 목록 → 상세 → 좌석 배치도 조회 가능 + OpenAPI 명세 확정
+
 ---
 
-# 5~6주차 — 가상 대기실 (Redis ZSET)
+# 5~6주차 — 가상 대기실 (Redis ZSET) + 좌석 락 PoC → SP3
 
-> 패키지는 `booking` 하위가 아니라 **`domain/waitingroom/`을 신설**합니다.
+> 패키지는 `booking` 하위가 아니라 **`domain/waitingroom/`을 신설**합니다. 대기실·좌석 선점 모두 B 담당이지만, `booking`이 `waitingroom`의 내부 구현을 직접 참조하지 말고 **입장 토큰 검증 인터페이스**를 통해서만 호출해야 합니다.
 
-## ★ Day 1에 무조건 할 일: 토큰 검증 시그니처 커밋
+## Day 1: 토큰 검증 시그니처 먼저 커밋
 
-같은 기간에 A는 좌석 선점을 만듭니다. A의 코드가 이 메서드를 호출하므로, **없으면 A는 컴파일조차 못 합니다.**
+7~8주차의 좌석 선점 코드가 이 메서드를 호출합니다. **껍데기라도 먼저 만들어 두면 흐름 설계가 명확해집니다.**
 
 ```java
 // domain/waitingroom/service/WaitingRoomService.java
@@ -615,12 +515,10 @@ public class WaitingRoomService {
 
     /** 입장 토큰이 유효하고 해당 회차·사용자의 것인지 검증. 아니면 예외 */
     public void validateEntryToken(String entryToken, Long sessionId, Long userId) {
-        throw new UnsupportedOperationException("구현 예정");   // 껍데기라도 Day 1에 커밋!
+        throw new UnsupportedOperationException("구현 예정");
     }
 }
 ```
-
-**"구현 다 하고 올릴게"는 2인 개발에서 가장 나쁜 선택입니다.** 껍데기 커밋 5분이 A의 2주를 살립니다.
 
 ## Redis 자료구조 설계
 
@@ -648,6 +546,8 @@ public class WaitingRoomService {
 | `POST` | `/api/waiting/{sessionId}/enter` | 대기열 진입 (순번 발급) |
 | `GET` | `/api/waiting/{sessionId}/status` | 내 순번 조회 (폴링 + heartbeat 겸용) |
 | `DELETE` | `/api/waiting/{sessionId}` | 대기 포기 |
+
+**셋 다 인증 필요 API입니다.** `@AuthenticationPrincipal CustomUserDetails`로 `userId`를 꺼내세요(A가 SP1에서 전달한 방식).
 
 ## 구현 포인트 6가지
 
@@ -690,6 +590,8 @@ public WaitingStatusResponse getStatus(Long sessionId, Long userId) {
 
 **폴링을 heartbeat로 활용**합니다(위 코드). `waiting:alive:*` 키는 TTL 30초라 폴링이 끊기면 자동 소멸합니다. 스케줄러가 입장을 허용할 때 **alive 키가 없는 사용자는 큐에서 제거**합니다.
 
+> **A에게 알려주세요.** "폴링을 멈추면 30초 뒤 큐에서 빠진다"는 사실을 모르면 A가 화면 전환 중 폴링을 끊어놓고 "왜 순번이 사라지죠?"라고 묻게 됩니다.
+
 ### ④ 입장 허용 스케줄러
 
 ```java
@@ -715,6 +617,7 @@ public void grantEntry() {
 ```
 
 `ZPOPMIN`은 **꺼내기와 삭제가 원자적**이라 여러 서버가 떠도 같은 사용자를 두 번 꺼내지 않습니다.
+`@Scheduled`를 쓰려면 설정 클래스에 `@EnableScheduling`이 필요합니다.
 
 ### ⑤ 저트래픽 fast-path
 
@@ -730,7 +633,7 @@ public EnterResponse enter(Long sessionId, Long userId) {
 }
 ```
 
-### ⑥ 토큰 검증 (A가 호출하는 그 메서드)
+### ⑥ 토큰 검증 (7~8주차에 좌석 선점이 호출하는 그 메서드)
 
 ```java
 public void validateEntryToken(String entryToken, Long sessionId, Long userId) {
@@ -746,18 +649,132 @@ public void validateEntryToken(String entryToken, Long sessionId, Long userId) {
 
 **`sessionId`와 `userId`를 함께 검증하는 게 중요합니다.** 토큰 문자열만 보면 남의 토큰을 복사해 쓸 수 있고, 다른 회차 토큰으로 인기 회차에 들어갈 수 있습니다.
 
-## A와 합의할 수치 ★
+## TTL 3종을 여기서 확정하세요 ★
 
 ```
-입장 토큰 TTL (B)   >   좌석 락 TTL (A)   >   결제 제한 시간 (A)
-    15분                    7분                   5분
+입장 토큰 TTL   >   좌석 락 TTL   >   결제 제한 시간
+    15분              7분              5분
 ```
 
-**입장 토큰이 좌석 락보다 먼저 만료되면**, 좌석은 잡았는데 예매 확정 시 토큰 검증에서 튕깁니다. **5주차 시작 전에 A와 숫자를 맞추세요.**
+**세 값 모두 B가 결정하고 관리합니다**(대기실·좌석락·예매확정이 전부 B 소유). 순서가 뒤집히면 반드시 버그가 납니다.
+
+- 락 TTL < 결제 시간 → 결제 중에 락이 풀려 남이 같은 좌석을 잡습니다
+- 입장 토큰 TTL < 락 TTL → 좌석은 잡았는데 입장 자격이 만료되어 확정을 못 합니다
+
+**확정한 숫자를 A에게 통보하세요.** A는 이 값으로 화면 타이머를 맞춥니다.
 
 ### 처리율(초당 N명)은 어떻게 정하나
 
 지금은 근거가 없습니다. **일단 임의의 값(예: 초당 20명)으로 시작하고, 11주차 부하 테스트에서 "서버가 견디는 최대 처리량"을 측정해 역산**하세요. 이 과정 자체가 포트폴리오에 쓸 좋은 이야기입니다.
+
+## 6주차 말: 좌석 락 PoC — 7~8주차 준비의 핵심
+
+**7주차에 처음 분산 락을 설계하면 늦습니다.** 대기실로 Redis에 익숙해진 지금, 작은 실험으로 원리를 확인해 두세요.
+
+### ⚠️ 함정 ③ — 먼저 알아야 할 것: 왜 Redisson `RLock`이 아닌가 ★★★
+
+인터넷의 "Redisson 분산 락" 예제는 대부분 이런 형태입니다.
+
+```java
+RLock lock = redissonClient.getLock("seat:1");
+lock.lock();
+try { ... } finally { lock.unlock(); }
+```
+
+**이 프로젝트의 좌석 선점에는 이걸 쓸 수 없습니다.** 이유:
+
+- `RLock`은 **획득한 스레드가 해제**하는 구조입니다(재진입 락).
+- 그런데 우리의 좌석 선점은 **HTTP 요청 A에서 잡고, 5분 뒤 다른 HTTP 요청 B에서 확인·해제**합니다.
+- 요청마다 스레드가 다르므로 요청 B에서 `unlock()`을 부르면 `IllegalMonitorStateException`이 납니다.
+
+| 상황 | 쓸 것 |
+|---|---|
+| 한 요청 안에서 시작·종료되는 짧은 임계 구역 | `RLock` (Redisson) |
+| **요청을 넘어 유지되는 점유** (= 좌석 선점) | **`SET key value NX EX ttl`** (소유자 값 비교 방식) |
+
+우리 좌석 선점은 후자입니다. 그래서 다음 형태를 씁니다.
+
+```
+키:   seat:hold:{sessionSeatId}
+값:   {userId}                     ← "누가 잡았는지"를 값에 기록
+TTL:  7분
+```
+
+- **획득** = `SET seat:hold:12 100 NX EX 420` → 성공하면 내가 주인
+- **확인** = `GET seat:hold:12` 값이 내 userId인가
+- **해제** = 값이 내 것일 때만 삭제 (Lua로 원자적 처리)
+
+> 그 결과 **`redisson-spring-boot-starter` 의존성 자체가 불필요해질 수 있습니다.** `build.gradle`에 주석 처리된 상태 그대로 두는 편이 낫습니다.
+
+### PoC로 만들 것
+
+```
+global/config/RedisConfig.java                        # StringRedisTemplate 설정 (A에게 요청 or 리뷰 요청)
+domain/booking/service/SeatHoldRedisRepository.java   # 획득/확인/해제 3개 메서드
+```
+
+```java
+@Repository
+@RequiredArgsConstructor
+public class SeatHoldRedisRepository {
+
+    private static final String KEY_PREFIX = "seat:hold:";
+    private static final Duration TTL = Duration.ofMinutes(7);
+
+    private final StringRedisTemplate redisTemplate;
+
+    /** 선점 시도. 이미 다른 사람이 잡고 있으면 false */
+    public boolean tryHold(Long sessionSeatId, Long userId) {
+        Boolean result = redisTemplate.opsForValue()
+                .setIfAbsent(key(sessionSeatId), String.valueOf(userId), TTL);
+        return Boolean.TRUE.equals(result);
+    }
+
+    /** 내가 주인인지 확인 */
+    public boolean isHeldBy(Long sessionSeatId, Long userId) {
+        return String.valueOf(userId).equals(redisTemplate.opsForValue().get(key(sessionSeatId)));
+    }
+
+    /** 내가 주인일 때만 해제 — GET 후 DEL 로 나눠 하면 그 사이에 남의 락을 지울 수 있어 Lua 로 원자 처리 */
+    public void release(Long sessionSeatId, Long userId) {
+        String script = """
+                if redis.call('get', KEYS[1]) == ARGV[1] then
+                    return redis.call('del', KEYS[1])
+                else
+                    return 0
+                end
+                """;
+        redisTemplate.execute(new DefaultRedisScript<>(script, Long.class),
+                List.of(key(sessionSeatId)), String.valueOf(userId));
+    }
+
+    private String key(Long sessionSeatId) {
+        return KEY_PREFIX + sessionSeatId;
+    }
+}
+```
+
+> **`release`를 왜 Lua로 하나?**
+> `if (isHeldBy(...)) { delete(...); }`로 쓰면, 확인과 삭제 사이에 TTL이 만료되고 다른 사용자가 같은 좌석을 잡을 수 있습니다. 그 상태에서 `delete`가 실행되면 **남의 락을 지워버립니다.** Lua 스크립트는 Redis에서 단일 명령으로 실행되므로 그 틈이 없습니다. 분산 락 구현에서 가장 유명한 버그이니 반드시 이해하고 넘어가세요.
+
+### PoC 검증
+
+```java
+@Test
+void 같은_좌석은_한_명만_선점한다() {
+    assertThat(repo.tryHold(1L, 100L)).isTrue();
+    assertThat(repo.tryHold(1L, 200L)).isFalse();   // 두 번째는 실패
+}
+
+@Test
+void 남의_락은_해제되지_않는다() {
+    repo.tryHold(1L, 100L);
+    repo.release(1L, 200L);                         // 다른 사람이 해제 시도
+    assertThat(repo.isHeldBy(1L, 100L)).isTrue();   // 여전히 100번 것
+}
+```
+
+A가 3~4주차에 깔아둔 `IntegrationTestSupport`(Testcontainers)를 상속하면 Redis 컨테이너가 자동으로 뜹니다.
 
 ## 완료 확인
 
@@ -768,15 +785,373 @@ docker compose exec redis redis-cli ZRANGE "waiting:queue:1" 0 -1 WITHSCORES
 # 같은 사용자가 두 번 진입해도 순번이 유지되는지 (NX 검증)
 ```
 
-**PR**: `feat: Redis ZSET 기반 가상 대기실 구현`
+**PR**: `feat: Redis ZSET 기반 가상 대기실 구현` / `feat: Redis 좌석 선점 락 저장소 PoC 구현`
+
+**완료 기준**: 동시 요청 시 순번대로 토큰 발급됨을 로컬에서 확인
 
 ---
 
-# 7~8주차 — Kafka 연동 + `notification`
+# 7~8주차 — 좌석 선점 + 예매 확정 ★ 최난도 구간 → SP4
 
-## ★ Day 1: 이벤트 DTO 먼저 확정
+## 시작 전 체크
 
-A가 발행 코드를 붙이려면 DTO가 있어야 합니다. **`global/event/` 중립 패키지**에 둡니다 — 어느 한쪽 도메인에 두면 반대쪽이 남의 도메인을 import하게 됩니다.
+- [ ] 대기실 `validateEntryToken`이 실제로 동작하는가 (5~6주차 산출물)
+- [ ] `SessionSeatService`의 `validateAvailable` / `findForBooking` / `markAsSold` / `markAsAvailable`이 구현되어 있는가 (3~4주차 산출물)
+- [ ] **A에게 `PaymentService.pay(bookingId, amount)` 시그니처를 받았는가?** (없으면 지금 요청 — 껍데기라도 커밋해달라고 하세요)
+- [ ] TTL 3종(15분 / 7분 / 5분)을 확정하고 A에게 통보했는가
+
+## 먼저: 스키마 보강 2건
+
+두 가지를 **마이그레이션 추가**로 해결해야 합니다. **`V1__init.sql`을 고치지 마세요.** 이미 적용된 마이그레이션을 수정하면 Flyway 체크섬이 깨져 앱이 안 뜹니다.
+
+파일명은 **타임스탬프 규칙**입니다: `V{yyyyMMddHHmm}__설명.sql`
+
+```sql
+-- src/main/resources/db/migration/V202609011000__alter_booking_payment.sql
+
+-- ① PENDING 예매 만료 기준 컬럼
+ALTER TABLE booking ADD COLUMN expires_at TIMESTAMPTZ;
+
+-- ② 결제 재시도가 막히는 문제 해결
+--    현재 UNIQUE(booking_id) 라서 FAILED 행이 자리를 차지하면 재결제 INSERT 가 거부됨.
+--    uq_booking_seat_active 와 같은 패턴(부분 유니크)으로 전환한다.
+ALTER TABLE payment DROP CONSTRAINT uq_payment_booking;
+CREATE UNIQUE INDEX uq_payment_booking_success
+    ON payment (booking_id)
+    WHERE status = 'SUCCESS';
+```
+
+> **순차 번호(`V2__`)를 쓰지 마세요.** A도 같은 기간에 마이그레이션을 추가할 수 있습니다. 타임스탬프는 충돌하지 않습니다.
+
+마이그레이션을 추가했으면 **`Booking` 엔티티에 `expiresAt` 필드를 추가**해야 합니다(안 그러면 validate는 통과하지만 코드에서 못 씁니다). **`payment` 테이블은 A 소유이므로 제약 변경 사실을 A에게 알리세요.**
+
+## (1) 좌석 선점 API
+
+### 만들 파일
+
+```
+domain/booking/controller/SeatHoldController.java
+domain/booking/service/SeatHoldService.java
+domain/booking/service/SeatHoldRedisRepository.java     # 6주차 PoC 승격
+domain/booking/dto/SeatHoldRequest.java
+domain/booking/dto/SeatHoldResponse.java
+domain/booking/exception/BookingErrorCode.java
+```
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `POST` | `/api/bookings/seats/hold` | 좌석 선점 (1~4석) |
+| `DELETE` | `/api/bookings/seats/hold` | 선점 해제 (사용자가 선택 취소) |
+
+```java
+public record SeatHoldRequest(
+        @NotNull Long sessionId,
+        @NotEmpty @Size(max = 4) List<Long> sessionSeatIds,
+        @NotBlank String entryToken               // 대기실 입장 토큰
+) {}
+```
+
+### 1단계 — 좌석 ID를 **반드시 정렬**합니다
+
+```java
+List<Long> sortedIds = request.sessionSeatIds().stream().sorted().toList();
+```
+
+**왜?** 데드락 때문입니다.
+
+```
+사용자1: 좌석 5 잡음 → 좌석 3 대기
+사용자2: 좌석 3 잡음 → 좌석 5 대기
+→ 둘 다 영원히 대기 (데드락)
+```
+
+모두가 **작은 ID부터** 잡으면 이 상황이 원천적으로 불가능합니다. 한 줄이지만 이 프로젝트에서 가장 중요한 한 줄 중 하나입니다.
+
+### 2단계 — 부분 실패 시 전량 해제
+
+3석 중 2석만 잡히면 **이미 잡은 2석도 풀고 실패**시켜야 합니다. 안 그러면 아무도 예매 못 하는 좌석이 TTL 동안 방치됩니다.
+
+```java
+@Service
+@RequiredArgsConstructor
+public class SeatHoldService {
+
+    private final SeatHoldRedisRepository holdRepository;
+    private final SessionSeatService sessionSeatService;      // performance 도메인 경유
+    private final WaitingRoomService waitingRoomService;      // waitingroom 도메인 경유
+
+    public SeatHoldResponse hold(Long userId, SeatHoldRequest request) {
+        // ① 대기열 우회 차단 — 이게 없으면 대기실이 무의미해집니다
+        waitingRoomService.validateEntryToken(request.entryToken(), request.sessionId(), userId);
+
+        // ② 좌석이 실제로 예매 가능한 상태인지 (performance 의 Service 경유)
+        sessionSeatService.validateAvailable(request.sessionId(), request.sessionSeatIds());
+
+        // ③ 정렬 순서대로 락 획득
+        List<Long> sortedIds = request.sessionSeatIds().stream().sorted().toList();
+        List<Long> acquired = new ArrayList<>();
+
+        for (Long seatId : sortedIds) {
+            if (holdRepository.tryHold(seatId, userId)) {
+                acquired.add(seatId);
+            } else {
+                acquired.forEach(id -> holdRepository.release(id, userId));   // ④ 전량 롤백
+                throw new BusinessException(BookingErrorCode.SEAT_ALREADY_HELD);
+            }
+        }
+
+        return new SeatHoldResponse(sortedIds, OffsetDateTime.now().plusMinutes(7));
+    }
+}
+```
+
+> **주의**: `@Transactional`을 붙이지 마세요. 이 메서드는 DB를 쓰지 않고 Redis만 다룹니다. **Redis는 트랜잭션 롤백 대상이 아닙니다** — DB 트랜잭션이 롤백돼도 Redis에 쓴 값은 그대로 남습니다. Redis와 DB를 한 메서드에서 섞으면 정합성이 깨집니다.
+
+### 3단계 — 선점 해제 API
+
+```java
+public void releaseAll(Long userId, List<Long> sessionSeatIds) {
+    sessionSeatIds.forEach(id -> holdRepository.release(id, userId));
+}
+```
+
+TTL이 있으니 해제 API가 없어도 결국 풀리지만, **사용자가 좌석을 바꾸려 할 때 7분을 기다리게 할 수는 없습니다.**
+
+## (2) 예매 확정 흐름 — 왜 이 순서인가
+
+```
+1. 입장 토큰 검증 (waitingroom)
+2. 좌석 락 소유 확인 (내가 잡은 좌석이 맞는가)
+3. ── 트랜잭션 T1 ──  booking INSERT(PENDING) → booking_seat INSERT(ACTIVE)
+                      ★ 여기서 uq_booking_seat_active 위반 = 중복 예매 → 즉시 거절
+4. Mock 결제 호출 (A의 PaymentService)   ← 트랜잭션 밖!
+                      실패하면 T1 되돌림 (booking/booking_seat → CANCELLED)
+5. ── 트랜잭션 T2 ──  payment INSERT → booking CONFIRMED → session_seat SOLD
+6. 커밋 후: Redis 락 해제 + Kafka 이벤트 발행
+```
+
+### 이 순서의 핵심 (면접에서 설명할 수 있어야 합니다)
+
+**중복 예매 검증(3번)을 결제(4번)보다 앞에 뒀습니다.** 그래서 "결제는 성공했는데 좌석은 남에게 뺏긴" 상태가 **구조적으로 발생할 수 없습니다.** 결제 실패 시 되돌릴 것은 DB 안의 상태뿐이고, 이건 DB 안에서 끝납니다.
+
+반대로 "결제 먼저 → 예매 생성" 순서였다면, 결제 후 좌석이 이미 팔린 것을 발견하면 **환불이라는 외부 시스템 보상**이 필요해집니다. 애초에 `payment.booking_id`가 NOT NULL FK라 물리적으로도 불가능한 순서입니다.
+
+### 왜 트랜잭션을 T1/T2 두 개로 나누나
+
+결제 호출(수백 ms~수 초)이 트랜잭션 안에 들어가면 그동안 **DB 커넥션을 붙잡고 있습니다.** 동시 접속이 몰리는 프로젝트에서 이건 커넥션 풀 고갈로 직결됩니다.
+
+## ⚠️ 함정 ④ — 클래스를 나눠야 T1/T2가 실제로 동작합니다
+
+```java
+// ❌ 이렇게 하면 T1, T2 트랜잭션이 전혀 동작하지 않습니다
+@Service
+public class BookingService {
+    public void confirm() {
+        createPending();     // 자기 자신 호출 → 프록시를 안 거침 → @Transactional 무시됨
+        payment.pay();
+        finalize();
+    }
+    @Transactional public void createPending() { ... }
+    @Transactional public void finalize() { ... }
+}
+```
+
+Spring의 `@Transactional`은 **프록시**로 동작합니다. 같은 클래스 안에서 호출하면 프록시를 거치지 않아 어노테이션이 무시됩니다. **에러도 안 나고 조용히 트랜잭션 없이 실행됩니다.** 나중에 "롤백이 안 된다"로 발견하게 됩니다.
+
+### 해결: Facade(흐름) + TransactionService(트랜잭션) 분리
+
+| 클래스 | `@Transactional` | 역할 |
+|---|---|---|
+| `BookingFacade` | **없음** | 1~6단계 흐름 조율 |
+| `BookingTransactionService` | 메서드마다 있음 | `createPending()`(T1) / `cancelPending()`(보상) / `confirmBooking()`(T2) |
+
+```java
+// domain/booking/service/BookingFacade.java  ← @Transactional 없음! 흐름만 담당
+@Service
+@RequiredArgsConstructor
+public class BookingFacade {
+
+    private final SeatHoldRedisRepository holdRepository;
+    private final BookingTransactionService txService;      // ★ 별도 빈
+    private final PaymentService paymentService;            // A 제공
+    private final WaitingRoomService waitingRoomService;
+    private final ApplicationEventPublisher eventPublisher;
+
+    public BookingResponse confirm(Long userId, BookingCreateRequest request) {
+        // 1. 입장 토큰 검증
+        waitingRoomService.validateEntryToken(request.entryToken(), request.sessionId(), userId);
+
+        // 2. 내가 잡은 좌석이 맞는지 확인
+        List<Long> seatIds = request.sessionSeatIds().stream().sorted().toList();
+        for (Long seatId : seatIds) {
+            if (!holdRepository.isHeldBy(seatId, userId)) {
+                throw new BusinessException(BookingErrorCode.SEAT_HOLD_EXPIRED);
+            }
+        }
+
+        // 3. T1 — PENDING 예매 생성 (여기서 중복 예매가 걸러짐)
+        Long bookingId = txService.createPending(userId, request.sessionId(), seatIds);
+
+        // 4. 결제 (트랜잭션 밖) — A의 Mock 결제 호출
+        PaymentResult result;
+        try {
+            result = paymentService.pay(bookingId, ...);
+        } catch (Exception e) {
+            txService.cancelPending(bookingId);       // T1 되돌리기
+            throw new BusinessException(BookingErrorCode.PAYMENT_FAILED);
+        }
+        if (!result.success()) {
+            txService.cancelPending(bookingId);
+            throw new BusinessException(BookingErrorCode.PAYMENT_FAILED);
+        }
+
+        // 5. T2 — 결제 기록 + 확정 + 좌석 SOLD
+        BookingResponse response = txService.confirmBooking(bookingId, result);
+
+        // 6. 커밋 이후 — 락 해제
+        seatIds.forEach(id -> holdRepository.release(id, userId));
+
+        // Kafka 발행은 이벤트로 위임 (9~10주차)
+        eventPublisher.publishEvent(new BookingConfirmedEvent(...));
+
+        return response;
+    }
+}
+```
+
+```java
+// domain/booking/service/BookingTransactionService.java  ← 트랜잭션만 담당
+@Service
+@RequiredArgsConstructor
+public class BookingTransactionService {
+
+    private final BookingRepository bookingRepository;
+    private final BookingSeatRepository bookingSeatRepository;
+    private final SessionSeatService sessionSeatService;     // performance 도메인 경유
+    private final PaymentRepository paymentRepository;
+
+    /** T1 — 결제 전. 여기서 중복 예매가 물리적으로 차단된다 */
+    @Transactional
+    public Long createPending(Long userId, Long sessionId, List<Long> seatIds) {
+        List<SeatPriceInfo> seats = sessionSeatService.findForBooking(sessionId, seatIds);
+        int totalAmount = seats.stream().mapToInt(SeatPriceInfo::price).sum();
+
+        Booking booking = Booking.builder()
+                .bookingNumber(generateBookingNumber())
+                .userId(userId)
+                .sessionId(sessionId)
+                .totalAmount(totalAmount)
+                .status(BookingStatus.PENDING)
+                .expiresAt(OffsetDateTime.now().plusMinutes(5))
+                .build();
+
+        try {
+            bookingRepository.save(booking);
+            bookingSeatRepository.saveAll(toBookingSeats(booking, seats));
+            bookingSeatRepository.flush();          // ★ 여기서 즉시 제약 위반을 확인
+        } catch (DataIntegrityViolationException e) {
+            // uq_booking_seat_active 위반 = 이미 다른 사람이 확정한 좌석
+            throw new BusinessException(BookingErrorCode.SEAT_ALREADY_BOOKED);
+        }
+        return booking.getId();
+    }
+
+    /** 결제 실패 시 T1 되돌리기 */
+    @Transactional
+    public void cancelPending(Long bookingId) {
+        Booking booking = findBooking(bookingId);
+        booking.cancel();
+        bookingSeatRepository.cancelAllByBookingId(bookingId);   // ACTIVE → CANCELLED
+    }
+
+    /** T2 — 결제 성공 후 확정 */
+    @Transactional
+    public BookingResponse confirmBooking(Long bookingId, PaymentResult result) {
+        Booking booking = findBooking(bookingId);
+        paymentRepository.save(Payment.success(booking, result));
+        booking.confirm();
+        sessionSeatService.markAsSold(seatIdsOf(bookingId));      // ★ performance 의 Service 경유
+        return BookingResponse.from(booking);
+    }
+}
+```
+
+### 여기서 배울 포인트 4가지
+
+1. **`flush()`를 명시적으로 호출하는 이유** — JPA는 보통 커밋 시점에 INSERT를 보냅니다. 그러면 `DataIntegrityViolationException`이 메서드 밖에서 터져 `catch`가 안 잡힙니다. `flush()`로 그 자리에서 쿼리를 보내야 잡을 수 있습니다.
+2. **`uq_booking_seat_active`가 진짜 방어선** — Redis 락은 "대부분의 경우 빠르게 막는" 장치이고, 네트워크 지연·TTL 만료·Redis 장애에서는 뚫립니다. **DB 유니크 제약은 절대 뚫리지 않습니다.** "락이 있으니 제약은 없어도 되지 않나?"는 틀린 생각입니다.
+3. **`session_seat` 변경은 `SessionSeatService` 경유** — `booking`에서 `SessionSeatRepository`를 직접 주입하면 `CLAUDE.md` 규칙 위반입니다.
+4. **락 해제는 커밋 이후** — 해제 후 커밋하면 그 사이에 남이 좌석을 잡을 수 있습니다.
+
+## (3) PENDING 만료 스케줄러
+
+결제를 안 끝내고 브라우저를 닫으면 `booking`이 PENDING으로 영원히 남고 좌석이 잠깁니다.
+
+```java
+@Component
+@RequiredArgsConstructor
+public class BookingExpirationScheduler {
+
+    @Scheduled(fixedDelay = 60_000)     // 1분마다
+    @Transactional
+    public void expirePendingBookings() {
+        List<Booking> expired = bookingRepository
+                .findAllByStatusAndExpiresAtBefore(BookingStatus.PENDING, OffsetDateTime.now());
+        expired.forEach(b -> {
+            b.cancel();
+            bookingSeatRepository.cancelAllByBookingId(b.getId());
+        });
+    }
+}
+```
+
+> **`session_seat`는 건드리지 않습니다.** T2에서만 SOLD가 되므로 PENDING 예매의 좌석은 여전히 `AVAILABLE`입니다. `booking_seat`만 CANCELLED로 바꾸면 부분 유니크 인덱스가 풀려 좌석이 자동 반환됩니다. **이게 `session_seat`에 HELD를 두지 않은 설계의 보상입니다.**
+
+## (4) 취소 API
+
+`DELETE /api/bookings/{id}` — 되돌릴 곳이 **3군데**입니다.
+
+```java
+@Transactional
+public void cancel(Long userId, Long bookingId) {
+    Booking booking = findBooking(bookingId);
+    if (!booking.getUserId().equals(userId)) {                 // ★ 남의 예매 취소 차단
+        throw new BusinessException(CommonErrorCode.FORBIDDEN);
+    }
+    booking.cancel();                                          // ① booking
+    bookingSeatRepository.cancelAllByBookingId(bookingId);     // ② booking_seat
+    sessionSeatService.markAsAvailable(seatIds);               // ③ session_seat (Service 경유)
+}
+```
+
+**소유자 확인을 빼먹지 마세요.** 경로의 `{id}`만 보고 취소하면 남의 예매를 취소할 수 있습니다.
+
+## 완료 확인
+
+```bash
+# 같은 좌석에 두 번 요청 → 두 번째는 409
+curl -X POST localhost:8080/api/bookings/seats/hold \
+  -H "Authorization: Bearer {token}" -H "Content-Type: application/json" \
+  -d '{"sessionId":1,"sessionSeatIds":[10,11],"entryToken":"..."}'
+
+# Redis 에서 확인
+docker compose exec redis redis-cli KEYS "seat:hold:*"
+docker compose exec redis redis-cli TTL "seat:hold:10"     # 남은 TTL(초)
+```
+
+**PR**: `feat: 좌석 선점/해제 API 및 Redis 분산 락 구현` / `feat: 예매 확정/취소 트랜잭션 구현`
+
+**완료 기준**: 동일 좌석 동시 요청 시 정확히 1건만 성공
+
+---
+
+# 9~10주차 — Kafka + `notification` + 예매 내역 + 동시성 테스트 → SP5
+
+## (1) Day 1: 이벤트 DTO 먼저 확정
+
+**`global/event/` 중립 패키지**에 둡니다. `booking`(발행)과 `notification`(소비) 모두 B 소유이지만 **서로 다른 도메인 패키지**이므로, 어느 한쪽에 두면 반대쪽이 남의 도메인을 import하게 됩니다.
+
+> `global/`은 A 소유지만 `global/event/`는 **B가 채우는 자리**로 SP0에서 합의된 예외입니다(A가 1주차에 빈 패키지만 만들어 둡니다).
 
 ```java
 // global/event/BookingConfirmedEvent.java
@@ -799,7 +1174,7 @@ public record BookingCancelledEvent(String eventId, Long bookingId, Long userId,
 
 **`eventId`를 반드시 넣으세요.** Kafka는 at-least-once 전달이라 **같은 메시지가 두 번 올 수 있습니다.** 중복 판단 기준이 없으면 알림이 두 번 발송됩니다.
 
-## `notification` 테이블 마이그레이션
+## (2) `notification` 테이블 마이그레이션
 
 ERD에서 빠져 있던 테이블입니다. **타임스탬프 규칙**을 지키세요.
 
@@ -824,10 +1199,9 @@ CREATE INDEX idx_notification_user ON notification (user_id, created_at DESC);
 
 `uq_notification_event`가 **consumer 멱등성의 최후 방어선**입니다. `uq_booking_seat_active`와 완전히 같은 아이디어입니다 — **코드가 아니라 DB 제약으로 보장**합니다.
 
-> **`V2__`를 쓰지 마세요.** A도 같은 기간에 마이그레이션을 추가합니다. 타임스탬프여야 충돌하지 않습니다.
 > 마이그레이션을 추가했으면 `Notification` **엔티티도 함께** 만드세요.
 
-## 토픽 설계
+## (3) 토픽 설계
 
 ```java
 @Configuration
@@ -848,7 +1222,7 @@ public class KafkaTopicConfig {
 - **`auto.create.topics.enable`에 의존하지 마세요.** 자동 생성은 파티션 수를 제어할 수 없고, 오타난 토픽명도 조용히 만들어버려 "메시지가 안 온다"의 원인 파악이 어렵습니다.
 - **파티션 키는 `sessionId`**로 두면 같은 회차 이벤트가 같은 파티션에 들어가 **회차별 순서가 보장**됩니다.
 
-## Consumer
+## (4) Consumer
 
 ```java
 @Component
@@ -881,9 +1255,9 @@ public void createIfAbsent(BookingConfirmedEvent event) {
 }
 ```
 
-**①만 있으면 부족합니다.** 두 스레드가 동시에 `existsByEventId`를 통과할 수 있습니다. ②의 DB 제약이 진짜 보장입니다. — **이 프로젝트가 좌석 예매에서 쓰는 것과 정확히 같은 패턴**입니다.
+**①만 있으면 부족합니다.** 두 스레드가 동시에 `existsByEventId`를 통과할 수 있습니다. ②의 DB 제약이 진짜 보장입니다. — **좌석 예매에서 쓰는 것과 정확히 같은 패턴**입니다.
 
-## 이벤트 발행 실패 문제 (A와 함께 논의)
+## (5) 이벤트 발행 실패 문제
 
 **DB 커밋은 성공했는데 Kafka 발행이 실패하면 알림이 유실됩니다.** 정석 해법은 트랜잭셔널 아웃박스 패턴(이벤트를 DB 테이블에 함께 저장하고 별도 프로세스가 발행)입니다.
 
@@ -896,7 +1270,7 @@ public void createIfAbsent(BookingConfirmedEvent event) {
 
 **어느 쪽을 고르든 "왜 그렇게 했는지"를 README에 쓰세요.** 한계를 아는 것과 모르는 것은 완전히 다릅니다.
 
-## DLQ (9~10주차)
+## (6) DLQ
 
 소비 실패가 무한 재시도로 이어지면 컨슈머가 그 메시지에 갇혀 뒤의 모든 메시지가 멈춥니다.
 
@@ -907,6 +1281,75 @@ public DefaultErrorHandler errorHandler(KafkaTemplate<Object, Object> template) 
     return new DefaultErrorHandler(recoverer, new FixedBackOff(1000L, 2));  // 1초 간격 2회 재시도
 }
 ```
+
+일부러 예외를 던져 DLT로 가는지 확인하세요.
+
+## (7) 예매 내역 API
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `GET` | `/api/bookings` | 내 예매 목록 (페이징, 최신순) |
+| `GET` | `/api/bookings/{id}` | 예매 상세 (좌석·결제 정보 포함) |
+
+`idx_booking_user (user_id, created_at DESC)` 인덱스가 이미 있으니 정렬은 `created_at DESC`로 하세요.
+
+상세 조회는 `booking` → `booking_seat` → `session_seat` → `venue_seat`까지 이어져 **N+1이 발생하기 쉽습니다.** `join fetch`로 한 번에 가져오세요. `org.hibernate.SQL: debug`를 켜고 쿼리 개수를 직접 세어 확인하는 게 확실합니다.
+
+**A가 마이페이지 화면에서 이 API를 씁니다.** 응답 스펙을 먼저 전달하세요.
+
+## (8) 동시성 통합 테스트 ★ 포트폴리오의 핵심 산출물
+
+이 프로젝트가 주장하는 것은 **"동시 요청에도 중복 예매 0건"**입니다. 이건 코드로 증명해야 합니다.
+
+```java
+class BookingConcurrencyTest extends IntegrationTestSupport {   // A가 3~4주차에 만든 베이스
+
+    // ★ @Transactional 을 붙이지 마세요! 롤백되면 다른 스레드가 데이터를 못 봅니다
+
+    @Test
+    void 동일_좌석에_100명이_동시에_예매하면_1건만_성공한다() throws Exception {
+        int threadCount = 100;
+        ExecutorService executor = Executors.newFixedThreadPool(32);
+        CountDownLatch latch = new CountDownLatch(threadCount);
+        AtomicInteger success = new AtomicInteger();
+        AtomicInteger fail = new AtomicInteger();
+
+        for (int i = 0; i < threadCount; i++) {
+            long userId = users.get(i).getId();
+            executor.submit(() -> {
+                try {
+                    bookingFacade.confirm(userId, request);
+                    success.incrementAndGet();
+                } catch (Exception e) {
+                    fail.incrementAndGet();
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+        latch.await(30, TimeUnit.SECONDS);
+
+        assertThat(success.get()).isEqualTo(1);
+        assertThat(fail.get()).isEqualTo(99);
+
+        // DB 로도 직접 검증
+        assertThat(bookingSeatRepository.countActiveBySessionSeatId(seatId)).isEqualTo(1);
+    }
+}
+```
+
+### 꼭 해볼 것: **락을 끈 버전과 비교**
+
+Redis 락을 건너뛰는 경로를 만들어 같은 테스트를 돌려보세요.
+
+| 버전 | 성공 | 실패 | 관찰 |
+|---|---|---|---|
+| 락 없음 | 1 | 99 | DB 유니크 제약이 다 막아줌. **하지만 99개의 INSERT 시도가 DB까지 도달** |
+| Redis 락 | 1 | 99 | 99개가 Redis에서 걸러져 DB 부하가 거의 없음 |
+
+**"락이 없어도 중복은 0건이지만, 락이 있으면 DB가 훨씬 편하다"** — 이게 분산 락의 진짜 역할입니다. 이 비교표 하나가 포트폴리오 설득력을 크게 올립니다. 11주차 부하 테스트의 비교군으로도 그대로 씁니다.
+
+> **11주차 부하 테스트용 대량 계정은 A가 만듭니다.** 필요한 계정 수와 형식을 지금 A에게 알려주세요. 11주차에 몰아서 하면 늦습니다.
 
 ## 완료 확인
 
@@ -921,23 +1364,32 @@ docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
 
 예매를 한 건 확정하고 → consumer 로그가 찍히고 → `notification` 테이블에 1행이 생기면 완료입니다. **같은 메시지를 두 번 보내도 1행만 생기는지**도 반드시 확인하세요.
 
-**PR**: `feat: Kafka 이벤트 연동 및 알림 적재 구현`
+**PR**: `feat: Kafka 이벤트 연동 및 알림 적재 구현` / `test: 좌석 예매 동시성 통합 테스트 추가`
 
 ---
 
-# 9~10주차 — 프론트 예매 플로우 연동 + 안정화
+# 11~12주차 — 부하 테스트 (B 리드) + 마무리
 
-- 프론트에서 **대기실 → 좌석 선택 → 예매 → 완료** 전체 플로우 연결 (A와 협업)
-- consumer 멱등성 검증 테스트
-- DLQ 동작 확인 (일부러 예외를 던져 DLT로 가는지)
-- 11주차 부하 테스트용 **대량 계정/토큰 사전 생성** — 동시 수천 명 시나리오는 계정이 미리 있어야 합니다. 11주차에 몰아서 하면 늦습니다
+- **[B]** k6 시나리오: ① 동일 좌석 동시 요청 ② 대기실 동시 진입
+- **[A]** 대량 테스트 유저/토큰 사전 생성, 결과 시각화
+- **목표 수치를 미리 정하세요.** "동시 500명에서 p95 < 500ms, 중복 예매 0건" 같은 기준이 없으면 성공/실패 판정이 불가능합니다
+- 검증 SQL:
+  ```sql
+  SELECT session_seat_id, count(*) FROM booking_seat
+  WHERE status = 'ACTIVE' GROUP BY 1 HAVING count(*) > 1;
+  -- 0행이어야 함
+  ```
+- 앱과 k6를 같은 노트북에서 돌리면 서로 자원을 뺏습니다. **"로컬 단일 머신 측정"이라는 한계를 리포트에 명시**하세요 (숨기는 것보다 훨씬 좋은 인상을 줍니다)
+- **[B]** 백엔드/아키텍처 다이어그램 · 부하 리포트 문서화
 
 ---
 
-# B가 반드시 기억할 5가지
+# B가 반드시 기억할 7가지
 
-1. **시드 데이터가 A의 블로커다** — 인증보다 먼저 끝낸다
-2. **시그니처를 먼저 커밋한다** — `SessionSeatService`, `validateEntryToken`, 이벤트 DTO. 껍데기라도 Day 1에
-3. **`ZADD NX`를 쓴다** — `add()`를 쓰면 새로고침마다 순번이 맨 뒤로 밀린다
-4. **멱등성은 DB 제약으로 보장한다** — `uq_notification_event`. 코드 체크만으로는 동시 소비를 못 막는다
-5. **`global/`은 확정 후 동결** — 바꿔야 하면 A 리뷰를 거친다
+1. **시드 데이터를 1~2주차에 끝낸다** — 없으면 B 본인의 3주차 이후가 전부 막힌다. A를 기다릴 필요도 없다
+2. **좌석 ID는 정렬해서 락을 잡는다** — 데드락 방지. 이 한 줄이 없으면 동시 요청에서 교착이 난다
+3. **부분 실패 시 획득한 락 전량 해제** — 좌석 증발 방지
+4. **`@Transactional`은 같은 클래스 내부 호출에서 동작하지 않는다** — `BookingFacade` / `BookingTransactionService` 분리
+5. **`uq_booking_seat_active`가 최후 방어선** — Redis 락은 뚫릴 수 있고 DB 제약은 안 뚫린다. 멱등성도 같은 원리(`uq_notification_event`)
+6. **락 해제는 커밋 이후, 결제는 트랜잭션 밖**
+7. **`ZADD NX`를 쓴다** — `add()`를 쓰면 새로고침마다 순번이 맨 뒤로 밀린다
