@@ -437,7 +437,7 @@ public class BookingService {
 
 Spring은 **프록시 객체**로 트랜잭션을 겁니다. 그런데 `confirm()` 안에서 `createPending()`을 부르면 프록시를 거치지 않고 자기 자신의 메서드를 직접 호출하는 것이라 어노테이션이 무시됩니다. 에러도 안 나고 조용히 트랜잭션 없이 실행됩니다.
 
-**해결: 트랜잭션 경계를 나눠야 하면 클래스를 나누세요.** (개발자 A의 예매 확정 T1/T2 분리가 정확히 이 케이스입니다 — `01-developer-a-workflow.md` 참고)
+**해결: 트랜잭션 경계를 나눠야 하면 클래스를 나누세요.** (개발자 B의 예매 확정 T1/T2 분리가 정확히 이 케이스입니다 — `02-developer-b-workflow.md` 참고)
 
 #### 함정 2 — 외부 API 호출을 트랜잭션 안에 넣지 마세요
 
@@ -515,7 +515,7 @@ public ApiResponse<BookingResponse> create(
 
 ## 8. 공통 응답 · 예외 처리 규격
 
-> ⚠️ `global/` 하위는 **A/B가 모두 의존하는 공유 기반**입니다. 1주차에 한 사람(B)이 확정해 머지한 뒤에는 **변경 시 상대 리뷰 필수**입니다. 기능 개발 중 편의로 시그니처를 바꾸지 마세요.
+> ⚠️ `global/` 하위는 **A/B가 모두 의존하는 공유 기반**이며 **소유자는 A**입니다. 1주차에 A가 확정해 머지한 뒤에는 **변경 시 상대 리뷰 필수**입니다. 기능 개발 중 편의로 시그니처를 바꾸지 마세요.
 
 ### 8-1. `ApiResponse<T>`
 
@@ -580,11 +580,11 @@ public enum CommonErrorCode implements ErrorCode {
 도메인별 파일은 **담당자 본인만** 수정합니다.
 
 ```
-domain/user/exception/UserErrorCode.java          (B)   U001~
+domain/user/exception/UserErrorCode.java          (A)   U001~
+domain/payment/exception/PaymentErrorCode.java    (A)   Y001~
 domain/performance/exception/PerformanceErrorCode.java (B) P001~
 domain/waitingroom/exception/WaitingRoomErrorCode.java (B) W001~
-domain/booking/exception/BookingErrorCode.java    (A)   B001~
-domain/payment/exception/PaymentErrorCode.java    (A)   Y001~
+domain/booking/exception/BookingErrorCode.java    (B)   B001~
 ```
 
 코드 접두어를 도메인별로 다르게 하면 코드값도 충돌하지 않습니다.
@@ -656,41 +656,45 @@ public class GlobalExceptionHandler {
 }
 ```
 
-> `DataIntegrityViolationException` 핸들러는 **`uq_booking_seat_active`(중복 예매 방지 최후 방어선)가 걸렸을 때** 사용자에게 "이미 예매된 좌석"이라고 알려주는 통로입니다. 이 프로젝트에서 가장 중요한 예외 처리입니다. 다만 여기서만 처리하면 어떤 제약이 걸렸는지 구분이 안 되므로, 개발자 A는 **Service 안에서 직접 잡아 도메인 예외로 바꾸는 편이 더 정확합니다** (A 문서 참고). 여기 있는 건 그물망입니다.
+> `DataIntegrityViolationException` 핸들러는 **`uq_booking_seat_active`(중복 예매 방지 최후 방어선)가 걸렸을 때** 사용자에게 "이미 예매된 좌석"이라고 알려주는 통로입니다. 이 프로젝트에서 가장 중요한 예외 처리입니다. 다만 여기서만 처리하면 어떤 제약이 걸렸는지 구분이 안 되므로, 개발자 B는 **Service 안에서 직접 잡아 도메인 예외로 바꾸는 편이 더 정확합니다** ([02번 문서](02-developer-b-workflow.md) 참고). 여기 있는 건 그물망입니다.
 
 ---
 
 ## 9. 도메인 경계를 넘는 방법
 
-`domain/` 하위는 **담당자가 정해진 남의 집**입니다. 규칙은 세 줄로 끝납니다.
+`domain/` 하위는 **소유자가 정해진 남의 집**입니다. 규칙은 세 줄로 끝납니다.
 
 1. 다른 도메인의 **Repository를 주입하지 마세요.**
 2. 다른 도메인의 **엔티티는 읽기용 `@ManyToOne(LAZY)` 참조까지만.**
 3. 다른 도메인의 **상태 변경은 그 도메인의 Service 메서드로만.**
 
+> **"같은 사람이 두 도메인을 다 갖고 있어도 규칙은 동일합니다."** 예를 들어 `booking`과 `performance`는 둘 다 B 담당이지만 패키지 경계는 그대로 지킵니다. 경계를 지켜야 나중에 한쪽만 캐싱을 넣거나 로직을 바꿀 때 한 곳만 고치면 됩니다.
+
 ### 예시 — 예매 확정 시 좌석을 SOLD로 바꾸기
 
+`session_seat`를 UPDATE하는 것은 `booking`이지만, 그 테이블의 소유는 `performance`입니다.
+
 ```java
-// ❌ A의 코드에서
-private final SessionSeatRepository sessionSeatRepository;   // B 소유 Repository 직접 주입
+// ❌ booking 의 코드에서
+private final SessionSeatRepository sessionSeatRepository;   // performance 소유 Repository 직접 주입
 sessionSeatRepository.updateStatusToSold(ids);
 ```
 
 ```java
-// ✅ A의 코드에서
-private final SessionSeatService sessionSeatService;         // B가 제공한 Service
+// ✅ booking 의 코드에서
+private final SessionSeatService sessionSeatService;         // performance 가 제공한 Service
 sessionSeatService.markAsSold(sessionSeatIds);
 ```
 
 ### 이 규칙의 진짜 이득: **기다리지 않아도 됩니다**
 
-B가 아직 `markAsSold`를 구현하지 않았어도, **시그니처만 먼저 커밋하면** A는 바로 다음 코드를 쓸 수 있습니다.
+상대가 아직 `pay()`를 구현하지 않았어도, **시그니처만 먼저 커밋하면** 나는 바로 다음 코드를 쓸 수 있습니다.
 
 ```java
-// B가 1일차에 이것만 먼저 커밋 → A는 즉시 병렬 작업 시작
+// A가 1일차에 이것만 먼저 커밋 → B는 즉시 예매 확정 흐름을 병렬로 작성
 @Service
-public class SessionSeatService {
-    public void markAsSold(List<Long> sessionSeatIds) {
+public class PaymentService {
+    public PaymentResult pay(Long bookingId, int amount) {
         throw new UnsupportedOperationException("구현 예정");   // 껍데기라도 먼저!
     }
 }
@@ -700,13 +704,25 @@ public class SessionSeatService {
 
 ### 서로 합의가 필요한 지점 (미리 알아두세요)
 
+**사람을 건너는 계약** — 상대를 기다리게 만드는 것들입니다.
+
 | 계약 | 제공자 | 사용자 | 언제까지 |
 |---|---|---|---|
-| `SessionSeatService.markAsSold(List<Long>)` | B | A | 5주차 전 |
-| `SessionSeatService.findAllForBooking(List<Long>)` (가격/유효성 조회) | B | A | 5주차 전 |
-| 대기실 입장 토큰 검증 메서드 | B | A | 5주차 전 |
-| Kafka 이벤트 DTO (`global/event/`) | B가 정의 | A가 발행 | 7주차 전 |
-| 좌석 락 TTL ↔ 입장 토큰 TTL 수치 | **A/B 공동 결정** | | 5주차 |
+| `ApiResponse` / `ErrorCode` / `BusinessException` / `GlobalExceptionHandler` | **A** | B | 1주차 Day 1 |
+| `BaseCreatedEntity` / `BaseTimeEntity` + `User` 엔티티 | **A** | B (엔티티 8종) | 1주차 Day 1~2 |
+| JWT 인증 + `CustomUserDetails`에서 `userId` 꺼내는 법 | **A** | B | 2주차 말 (SP1) |
+| `PaymentService.pay(bookingId, amount)` | **A** | B (`BookingFacade`) | 6주차 말 |
+| 시드 데이터 (`session_seat` 생성) | **B** | A (프론트 실데이터) | 2주차 말 |
+| OpenAPI 명세 (카탈로그·대기실·예매) | **B** | A (프론트 Mock→실 API) | 4주차 말 (SP2) |
+
+**도메인을 건너는 계약** — 둘 다 B 소유지만 패키지 경계는 지킵니다.
+
+| 계약 | 제공 도메인 | 사용 도메인 | 언제까지 |
+|---|---|---|---|
+| `SessionSeatService.validateAvailable / findForBooking / markAsSold / markAsAvailable` | `performance` | `booking` | 7주차 전 |
+| `WaitingRoomService.validateEntryToken(...)` | `waitingroom` | `booking` | 7주차 전 |
+| Kafka 이벤트 DTO (`global/event/`) | `booking`(발행) | `notification`(소비) | 9주차 |
+| 입장 토큰 TTL(15분) > 좌석 락 TTL(7분) > 결제 제한(5분) | **B가 결정** | A(화면 타이머)에게 통보 | 7주차 전 |
 
 ---
 
