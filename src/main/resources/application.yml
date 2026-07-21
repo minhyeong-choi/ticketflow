@@ -3,3 +3,8 @@ spring:
     name: ticketflow
   profiles:
     active: local
+  jpa:
+    # OSIV를 끈다. 켜두면 HTTP 요청이 끝날 때까지 DB 커넥션을 붙잡고 있어,
+    # 좌석 선점 경합 구간에서 커넥션 풀이 고갈될 수 있다(부하 테스트 수치에 직결).
+    # 대신 지연 로딩은 트랜잭션(서비스 계층) 안에서만 가능하다.
+    open-in-view: false
