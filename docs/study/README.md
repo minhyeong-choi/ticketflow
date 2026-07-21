@@ -12,9 +12,11 @@
 
 | 순서 | 문서 | 대상 | 내용 |
 |---|---|---|---|
-| 1 | [00-common-workflow.md](00-common-workflow.md) | **A, B 모두 필수** | 레이어 구조, 엔티티 작성법, DTO/예외/응답 규격, Git 흐름, 기능 하나 만드는 8단계 사이클 |
-| 2 | [01-developer-a-workflow.md](01-developer-a-workflow.md) | 개발자 A | `booking`, `payment` — 주차별 진행 순서 |
-| 2 | [02-developer-b-workflow.md](02-developer-b-workflow.md) | 개발자 B | `user`, `performance`, `waitingroom`, `notification` — 주차별 진행 순서 |
+| 1 | [04-github-branch-pr-guide.md](04-github-branch-pr-guide.md) | GitHub 입문자 | 브랜치, 커밋, push, PR 기본 흐름 |
+| 2 | [00-common-workflow.md](00-common-workflow.md) | **A, B 모두 필수** | 레이어 구조, 엔티티 작성법, DTO/예외/응답 규격, Git 흐름, 기능 하나 만드는 8단계 사이클 |
+| 3 | [03-jpa-entity-from-sql-guide.md](03-jpa-entity-from-sql-guide.md) | JPA 입문자 | `V1__init.sql`을 보고 엔티티를 작성하는 방법 |
+| 4 | [01-developer-a-workflow.md](01-developer-a-workflow.md) | 개발자 A | `booking`, `payment` — 주차별 진행 순서 |
+| 4 | [02-developer-b-workflow.md](02-developer-b-workflow.md) | 개발자 B | `user`, `performance`, `waitingroom`, `notification` — 주차별 진행 순서 |
 
 **00번을 건너뛰지 마세요.** A/B 문서는 00번에서 설명한 용어와 패턴을 이미 안다고 가정하고 쓰여 있습니다.
 
