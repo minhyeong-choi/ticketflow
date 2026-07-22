@@ -13,8 +13,8 @@
 | 순서 | 문서 | 대상 | 내용 |
 |---|---|---|---|
 | 1 | [00-common-workflow.md](00-common-workflow.md) | **A, B 모두 필수** | 레이어 구조, 엔티티 작성법, DTO/예외/응답 규격, Git 흐름, 기능 하나 만드는 8단계 사이클 |
-| 2 | [01-developer-a-workflow.md](01-developer-a-workflow.md) | 개발자 A | 프론트엔드 전체, `global`(공통 인프라), `user`(인증/JWT), `payment`(Mock 결제) — 주차별 진행 순서 |
-| 2 | [02-developer-b-workflow.md](02-developer-b-workflow.md) | 개발자 B | `performance`(카탈로그), `waitingroom`(대기실), `booking`(좌석 선점·예매 확정), `notification`(Kafka) — 주차별 진행 순서 |
+| 2 | [01-developer-a-workflow.md](01-developer-a-workflow.md) | 개발자 A (choimh) | 프론트엔드 전체, `global`(공통 인프라), `user`(인증/JWT), `payment`(Mock 결제) — 주차별 진행 순서 |
+| 2 | [02-developer-b-workflow.md](02-developer-b-workflow.md) | 개발자 B (dhyeom) | `performance`(카탈로그), `waitingroom`(대기실), `booking`(좌석 선점·예매 확정), `notification`(Kafka) — 주차별 진행 순서 |
 
 **00번을 건너뛰지 마세요.** A/B 문서는 00번에서 설명한 용어와 패턴을 이미 안다고 가정하고 쓰여 있습니다.
 

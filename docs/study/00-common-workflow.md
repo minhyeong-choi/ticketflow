@@ -496,8 +496,11 @@ public class AuthController {
 
 | prefix | 담당 |
 |---|---|
-| `/api/auth/**`, `/api/users/**`, `/api/performances/**`, `/api/sessions/**`, `/api/waiting/**` | B |
-| `/api/bookings/**`, `/api/payments/**` | A |
+| `/api/auth/**`, `/api/users/**` | A |
+| `/api/payments/**` | A |
+| `/api/performances/**`, `/api/sessions/**` | B |
+| `/api/waiting/**` | B |
+| `/api/bookings/**` | B |
 
 - **HTTP 메서드 선택**: 조회=GET, 생성=POST, 전체수정=PUT, 부분수정=PATCH, 삭제=DELETE.
 - **로그인 사용자 정보는 파라미터로 받지 마세요.** `userId`를 요청 바디로 받으면 남의 ID를 넣어 남의 예매를 취소할 수 있습니다. 인증 컨텍스트에서 꺼냅니다:

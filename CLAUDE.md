@@ -45,6 +45,8 @@ curl localhost:8080/actuator/health
 
 **패키지 구조** (`com.ticket.ticketflow`): 도메인 주도 구조로, `domain/` 하위 각 도메인 패키지(`booking`, `payment`, `performance`, `user`, `notification`)마다 `controller/dto/entity/repository/service` 서브패키지를 둡니다. 횡단 관심사 코드는 `global/`(`common`, `config`, `exception`, `security`) 하위에 위치합니다.
 
+**프론트엔드**는 같은 레포의 `frontend/`에 둡니다 — **React + TypeScript + Vite**(SPA, 개발 서버 포트 5173 — `SecurityConfig`의 CORS 허용 오리진과 묶여 있으므로 바꾸지 마세요). `frontend/src/features/` 하위를 백엔드 `domain/`과 1:1로 나누고, **feature 간 직접 import를 금지**합니다(백엔드 도메인 경계 규칙과 같은 이유). API 응답 타입은 손으로 적지 말고 B의 OpenAPI에서 `openapi-typescript`로 생성해 `src/api/generated/`에 커밋하세요 — 계약 위반이 `tsc`에서 잡히는 것이 2인 병렬 개발의 핵심 장치입니다. 구조·기술 선택·설계 제약은 `docs/FRONTEND.md`가 정본입니다.
+
 **스키마 소유권은 Flyway**: `spring.jpa.hibernate.ddl-auto: validate`로 설정되어 있어 Hibernate는 스키마를 변경하지 않고 기동 시 엔티티와 스키마 일치 여부만 검증합니다. 즉 **JPA 엔티티가 Flyway 마이그레이션과 정확히 일치하지 않으면 앱이 아예 뜨지 않습니다**. `src/main/resources/db/migration/V1__init.sql`을 엔티티 필드/제약조건의 근거로 삼고, V1을 직접 수정하지 말고 새 마이그레이션을 추가하세요(파일명은 아래 "Flyway 마이그레이션 버전 규칙" 준수).
 
 ### 핵심 스키마/설계 결정 (전체 근거는 V1__init.sql과 로드맵 참고)
