@@ -10,11 +10,11 @@
 | 영역 | 내용 |
 |---|---|
 | **프론트엔드 전체** | 모든 화면. AI 도구로 생성하되 **유지보수·품질 책임은 A** |
-| `global/` | 공통 응답·예외·시큐리티·공통 엔티티 기반 (**1주차에 확정 후 동결**) |
-| `domain/user` | 회원가입, 로그인, JWT 인증 |
+| `global/` | 공통 응답·예외·시큐리티·공통 엔티티 기반 (**1주차에 확정 후 동결**). **`/api/admin/**` → `hasRole('ADMIN')` 인가 규칙도 A 소유**(B의 관리자 CRUD가 이 위에 얹힘) |
+| `domain/user` | 회원가입, 로그인, JWT 인증, **회원정보 수정·비밀번호 변경(FR-A6/A7)** |
 | `domain/payment` | Mock 결제 |
 | 부수 작업 | `springdoc-openapi` 도입, Testcontainers, CORS 설정 |
-| API 경로 | `/api/auth/**`, `/api/users/**`, `/api/payments/**` |
+| API 경로 | `/api/auth/**`, `/api/users/**`(수정 포함), `/api/payments/**` |
 
 **A는 1~2주차에 "B를 막지 않는 것"이 최우선입니다.**
 
@@ -28,11 +28,11 @@
 
 | 주차 | 할 일 | B에게 미치는 영향 |
 |---|---|---|
-| 1~2 | `global/` 확정 → Base·`User`·`Payment` 엔티티 → **인증(JWT)** | global·`User`가 없으면 B는 착수 자체가 불가 |
+| 1~2 | `global/`(+ADMIN 인가) 확정 → Base·`User`·`Payment` 엔티티 → **인증(JWT) + 회원정보 수정(FR-A6/A7)** | global·`User`가 없으면 B는 착수 자체가 불가 |
 | 3~4 | 프론트 골격 + 인증 화면 + 카탈로그 화면(Mock) + Testcontainers + springdoc | SP2에서 B의 실 API로 교체 |
 | 5~6 | 대기실 프론트 + **Mock 결제(`payment`)** | 결제 시그니처가 B의 7~8주차 예매 확정 조건 |
 | 7~8 | 예매 플로우 프론트 + 결제 연동 | |
-| 9~10 | 알림/마이페이지 화면 + 전체 UX 마무리 | |
+| 9~10 | 알림/마이페이지 + **회원정보 수정 화면(FR-F8)** + **관리자 화면(FR-F9, P2)** + UX 마무리 | F9는 11주차 부하 테스트와 상충 시 우선 포기 |
 | 11~12 | 대량 테스트 계정 생성·결과 시각화 / 마무리 (공동) | |
 
 ## B와 주고받는 계약 (미리 알아두세요)
@@ -44,8 +44,9 @@
 | `User` 엔티티 | **A** | B (`Booking`이 `@ManyToOne` 참조) | 1주차 Day 2 |
 | JWT 인증 + 인증 주체에서 `userId` 꺼내는 방법 | **A** | B (모든 인증 필요 API) | SP1 (2주차 말) |
 | `PaymentService.pay(...)` 시그니처 | **A** | B (`BookingFacade`가 호출) | 6주차 말 |
-| 시드 데이터 | B | **A** (프론트가 볼 실데이터) | 2주차 말 |
-| OpenAPI 명세 (카탈로그·대기실·예매) | B | **A** (프론트 Mock→실 API) | SP2 (4주차 말) |
+| `/api/admin/**` → `hasRole('ADMIN')` 인가 규칙 | **A**(`SecurityConfig` 소유) | B (관리자 CRUD가 이 화이트리스트에 얹힘) | SP2 (4주차 말) |
+| 시드 데이터 (+ **ADMIN 계정 1개**) | B | **A** (프론트가 볼 실데이터, 관리자 로그인) | 2주차 말 |
+| OpenAPI 명세 (카탈로그·대기실·예매·**관리자 CRUD**) | B | **A** (프론트 Mock→실 API, 관리자 화면은 P2) | SP2 (4주차 말) |
 | CORS 허용 오리진 | **A**(`SecurityConfig` 소유) | — | 3주차 |
 
 ---
@@ -227,6 +228,8 @@ domain/user/dto/SignupRequest.java
 domain/user/dto/LoginRequest.java
 domain/user/dto/TokenResponse.java
 domain/user/dto/UserResponse.java
+domain/user/dto/UpdateProfileRequest.java     # FR-A6 내 정보 수정
+domain/user/dto/ChangePasswordRequest.java    # FR-A7 비밀번호 변경
 domain/user/exception/UserErrorCode.java
 ```
 
@@ -443,10 +446,14 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
 | `POST` | `/api/auth/signup` | ❌ | 회원가입 |
 | `POST` | `/api/auth/login` | ❌ | 로그인 → 토큰 |
 | `GET` | `/api/users/me` | ✅ | 내 정보 |
+| `PATCH` | `/api/users/me` | ✅ | 내 정보 수정 (FR-A6). **본인만.** 이메일 변경 허용 여부 = PRD U20 |
+| `PATCH` | `/api/users/me/password` | ✅ | 비밀번호 변경 (FR-A7). **현재 비밀번호 검증 후** 재해시 |
 
 회원가입 시 **이메일 중복 검사**를 꼭 넣으세요. `uq_users_email` 제약이 있어 안 넣어도 DB가 막지만, 사용자에게 "이미 가입된 이메일입니다"라고 알려주려면 서비스에서 먼저 확인해야 합니다.
 
 로그인 실패 메시지는 **"이메일 또는 비밀번호가 올바르지 않습니다"** 하나로 통일하세요. "존재하지 않는 이메일"과 "비밀번호 불일치"를 구분해서 알려주면 가입된 이메일 목록을 알아낼 수 있습니다.
+
+**비밀번호 변경(FR-A7)은 반드시 현재 비밀번호를 먼저 검증**하세요. 토큰만으로 새 비밀번호를 받으면, 탈취된 토큰으로 비밀번호가 바뀌어 계정을 완전히 뺏깁니다. 새 비밀번호 검증 규칙(최소 길이 등)은 회원가입 DTO와 동일하게 재사용합니다.
 
 ### ★ B에게 반드시 알려줄 것: 컨트롤러에서 `userId` 꺼내는 법
 
@@ -652,9 +659,12 @@ B의 7~8주차 동시성 통합 테스트에 함께 참여하면 A도 이 프로
 # 9~10주차 — 알림 / 마이페이지 + UX 마무리 → SP5
 
 - 예매 내역(마이페이지) 화면 — B의 `GET /api/bookings` 연동
+- **회원정보 수정 화면(FR-F8)** — 1~2주차에 만든 `PATCH /api/users/me`·`.../password`에 바로 연동. 마이페이지 내
 - 알림 목록 화면 — B의 `notification` 적재 결과 조회
 - 전체 UX 다듬기, 프론트 버그 정리
 - **대기실 → 좌석 선택 → 예매 → 완료 전체 플로우**를 처음부터 끝까지 한 번 통과시켜 보세요 (B와 협업)
+
+**[선택·P2] 관리자 카탈로그 관리 화면(FR-F9)** — B의 `/api/admin/**`(FR-M1~M3) 연동, `ADMIN` 계정 전용 라우트. **버퍼 구간의 마지막 항목이며, 11주차 부하 테스트 준비와 상충하면 가장 먼저 포기**합니다(PRD R9). 화면에서 숨겨도 서버가 `hasRole('ADMIN')`로 최종 차단하므로 보안은 서버가 책임집니다.
 
 ---
 
