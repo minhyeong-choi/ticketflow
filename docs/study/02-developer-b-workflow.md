@@ -1,4 +1,4 @@
-# 02. 개발자 B 워크플로우 — `performance`(카탈로그) / `booking` / `waitingroom` / `notification`
+# 02. 개발자 B(dhyeom) 워크플로우 — `performance`(카탈로그) / `booking` / `waitingroom` / `notification`
 
 > 담당 기준은 **`docs/ROADMAP.md`의 "역할 분담 (2026-07 재편)"** 표입니다. 이 문서는 그 표를 그대로 따릅니다.
 > (2026-07-22 개정: 구 분담에서 B가 갖고 있던 `global`·`user`(인증/JWT)는 **A로 이관**되어 [01번 문서](01-developer-a-workflow.md)로 옮겼고, 구 분담에서 A가 갖고 있던 `booking`(좌석 선점·예매 확정)은 **B로 이관**되어 이 문서로 들어왔습니다.)
@@ -26,8 +26,8 @@
 | 1~2 | 카탈로그·예매 엔티티 8종 + **시드 데이터** | 앱이 뜬다 = 스키마 정합성 증명 |
 | 3~4 | 카탈로그 조회 API + **OpenAPI 명세 확정** | A의 프론트가 Mock→실 API로 전환하는 근거 (SP2) |
 | 5~6 | 가상 대기실 (Redis ZSET) + 좌석 락 PoC | 락 동작 원리를 손으로 확인 (SP3) |
-| 7~8 | **좌석 선점 + 예매 확정 T1/T2 + 취소** ★ 최난도 | 동시 요청에 1건만 성공 (SP4) |
-| 9~10 | Kafka + `notification` + 예매 내역 + **동시성 통합 테스트** | "중복 예매 0건" 증명 (SP5) |
+| 7~8 | **좌석 선점 + 예매 확정 T1/T2 + 취소 + 동시성 통합 테스트** ★ 최난도 | 동시 요청에 1건만 성공 (SP4) |
+| 9~10 | Kafka + `notification` + 예매 내역 (**일정 버퍼 구간**) | 이벤트 기반 확장 (SP5) |
 | 11~12 | 부하 테스트 리드 / 마무리 (공동) | |
 
 ## A와 주고받는 계약 (미리 알아두세요)
@@ -633,6 +633,10 @@ public EnterResponse enter(Long sessionId, Long userId) {
 }
 ```
 
+> ⚠️ **위 코드를 그대로 두면 대기실이 무력화됩니다.** 예매 오픈 순간 수천 요청이 동시에 도착하면 **전원이 `size == 0`을 관측**하고 **전부 fast-path로 통과**합니다. 큐가 비어 있는지 확인하는 것과 토큰을 발급하는 것이 원자적이지 않기 때문입니다. 하필 11주차 부하 테스트 시나리오②가 정확히 그 상황이라, "대기열이 트래픽을 흡수한다"(PRD S4)를 증명하려는 그 측정에서 흡수가 일어나지 않습니다.
+>
+> → **원자적 상한을 거세요.** 예: `INCR wait:fastpass:{sessionId}` 결과가 처리율 예산(초당 N명) 이하일 때만 즉시 입장을 주고, 초과하면 정상 대기열로 보냅니다. 또는 부하 테스트 시 fast-path를 끄는 설정 플래그를 둡니다(FR-K11의 락 토글과 같은 방식).
+
 ### ⑥ 토큰 검증 (7~8주차에 좌석 선점이 호출하는 그 메서드)
 
 ```java
@@ -660,6 +664,20 @@ public void validateEntryToken(String entryToken, Long sessionId, Long userId) {
 
 - 락 TTL < 결제 시간 → 결제 중에 락이 풀려 남이 같은 좌석을 잡습니다
 - 입장 토큰 TTL < 락 TTL → 좌석은 잡았는데 입장 자격이 만료되어 확정을 못 합니다
+
+### ★ 대소 관계만으로는 부족합니다 — 잔여시간을 검증하세요
+
+`15 > 7 > 5`는 **필요조건일 뿐입니다.** 세 TTL은 **각각 다른 시점에 시작**하기 때문에, 대소 관계를 지켜도 아래가 그대로 터집니다.
+
+| 반례 | 결과 |
+|---|---|
+| 입장(t=0, 토큰 만료 t=15) → 배치도를 10분 둘러본 뒤 t=10에 선점(락 t=10~17) → t=16에 확정 | 토큰이 이미 만료(t=15). **좌석은 잡혔는데 확정 불가** |
+| 선점(t=0, 락 t=0~7) → t=6:50에 확정 시작 → 결제 5분 소진 | **결제 도중 t=7에 락 만료.** 남이 선점 성공 → 그 사람은 409를 받지만 좌석은 아직 팔린 게 아님 |
+
+그래서 **두 지점에서 잔여시간을 검사**해야 합니다 (PRD 4절 INV-1 / INV-2).
+
+- **좌석 선점 진입 시**: `입장 토큰 잔여 TTL ≥ 좌석 락 TTL`이 아니면 거부 (또는 토큰 갱신)
+- **예매 확정 진입 시**: `좌석 락 잔여 TTL ≥ 결제 제한시간`이 아니면 거부, 또는 **소유자 검증 후 Lua로 `PEXPIRE` 연장**
 
 **확정한 숫자를 A에게 통보하세요.** A는 이 값으로 화면 타이머를 맞춥니다.
 
@@ -1050,11 +1068,25 @@ public class BookingTransactionService {
             bookingSeatRepository.saveAll(toBookingSeats(booking, seats));
             bookingSeatRepository.flush();          // ★ 여기서 즉시 제약 위반을 확인
         } catch (DataIntegrityViolationException e) {
-            // uq_booking_seat_active 위반 = 이미 다른 사람이 확정한 좌석
-            throw new BusinessException(BookingErrorCode.SEAT_ALREADY_BOOKED);
+            // ★ 제약 이름으로 판별하세요. 통째로 잡으면 안 됩니다 (아래 설명)
+            if (isConstraintViolation(e, "uq_booking_seat_active")) {
+                throw new BusinessException(BookingErrorCode.SEAT_ALREADY_BOOKED);
+            }
+            throw e;    // 그 외 무결성 위반은 500 + 별도 로깅
         }
         return booking.getId();
     }
+
+    /*
+     * ★ 예외를 뭉뚱그리지 마세요.
+     *   T1에는 uq_booking_seat_active 외에 uq_booking_number(V1__init.sql:155)도 걸려 있습니다.
+     *   DataIntegrityViolationException을 통째로 "중복 예매"로 매핑하면
+     *   예매번호 충돌이 사용자에게 "이미 예매된 좌석"으로 오표시되고,
+     *   부하 리포트의 409 카운트까지 오염되어 S1·S2의 증거가 흐려집니다.
+     *   → generateBookingNumber()는 충돌 안전한 방식(UUID 기반 또는 DB 시퀀스, VARCHAR(30) 내)으로.
+     *   isConstraintViolation()은 ConstraintViolationException#getConstraintName() 또는
+     *   PSQLException의 ServerErrorMessage#getConstraint()로 제약 이름을 비교해 구현합니다.
+     */
 
     /** 결제 실패 시 T1 되돌리기 */
     @Transactional
@@ -1139,13 +1171,15 @@ docker compose exec redis redis-cli KEYS "seat:hold:*"
 docker compose exec redis redis-cli TTL "seat:hold:10"     # 남은 TTL(초)
 ```
 
-**PR**: `feat: 좌석 선점/해제 API 및 Redis 분산 락 구현` / `feat: 예매 확정/취소 트랜잭션 구현`
+**PR**: `feat: 좌석 선점/해제 API 및 Redis 분산 락 구현` / `feat: 예매 확정/취소 트랜잭션 구현` / `test: 좌석 예매 동시성 통합 테스트 추가`
 
-**완료 기준**: 동일 좌석 동시 요청 시 정확히 1건만 성공
+**완료 기준**: 동일 좌석 동시 요청 시 정확히 1건만 성공 — **curl이 아니라 [동시성 통합 테스트](#8-동시성-통합-테스트--포트폴리오의-핵심-산출물)로 증명해야 SP4가 통과합니다.** 이 테스트는 문서 뒤쪽에 코드가 실려 있지만 **작성 시점은 7~8주차**입니다(SP4의 완료 증거이므로 9~10주차로 미루면 SP4가 증거 없이 통과함).
 
 ---
 
-# 9~10주차 — Kafka + `notification` + 예매 내역 + 동시성 테스트 → SP5
+# 9~10주차 — Kafka + `notification` + 예매 내역 → SP5 (**일정 버퍼 구간**)
+
+> 7~8주차가 밀렸다면 이 구간을 압축하거나 일부를 포기하고, **11주차 부하 테스트는 사수**하세요. FR-N 전체가 P1이라 잘라낼 수 있습니다.
 
 ## (1) Day 1: 이벤트 DTO 먼저 확정
 
@@ -1298,6 +1332,8 @@ public DefaultErrorHandler errorHandler(KafkaTemplate<Object, Object> template) 
 **A가 마이페이지 화면에서 이 API를 씁니다.** 응답 스펙을 먼저 전달하세요.
 
 ## (8) 동시성 통합 테스트 ★ 포트폴리오의 핵심 산출물
+
+> ⚠️ **작성 시점은 7~8주차입니다.** (설명 순서상 여기 실려 있을 뿐, SP4의 완료 증거이므로 예매 확정 구현 직후에 만드세요.)
 
 이 프로젝트가 주장하는 것은 **"동시 요청에도 중복 예매 0건"**입니다. 이건 코드로 증명해야 합니다.
 

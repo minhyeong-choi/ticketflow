@@ -1,4 +1,4 @@
-# 01. 개발자 A 워크플로우 — 프론트엔드 + `global` / `user` / `payment`
+# 01. 개발자 A(choimh) 워크플로우 — 프론트엔드 + `global` / `user` / `payment`
 
 > 담당 기준은 **`docs/ROADMAP.md`의 "역할 분담 (2026-07 재편)"** 표입니다. 이 문서는 그 표를 그대로 따릅니다.
 > (2026-07-22 개정: 구 분담에서 A가 갖고 있던 `booking`·좌석 선점·예매 확정은 **B로 이관**되어 [02번 문서](02-developer-b-workflow.md)로 옮겼고, 구 분담에서 B가 갖고 있던 `global`·인증(JWT)은 **A로 이관**되어 이 문서로 들어왔습니다.)
@@ -182,11 +182,15 @@ public class User extends BaseTimeEntity {
 
 `users`는 Postgres 예약어 `user`를 피하려고 복수형으로 만든 테이블입니다. `@Table(name = "users")`를 빼먹으면 Hibernate가 `user` 테이블을 찾다가 실패합니다.
 
-### `Payment` — 결제 재시도를 막는 제약이 이미 있습니다
+### `Payment` — 재시도 제약은 "실패 이력을 남길 때만" 문제가 됩니다
 
-`V1__init.sql`의 `uq_payment_booking`은 `UNIQUE(booking_id)`인데, `ck_payment_status`에는 `FAILED`가 있습니다. **즉 결제가 한 번 실패해 `FAILED` 행이 남으면 재결제 INSERT가 거부됩니다.**
+`V1__init.sql`의 `uq_payment_booking`은 `UNIQUE(booking_id)`인데, `ck_payment_status`에는 `FAILED`가 있습니다. 결제가 한 번 실패해 `FAILED` **행을 남기면** 재결제 INSERT가 거부됩니다.
 
-이건 7~8주차에 B가 예매 확정을 붙이면서 실제로 터지는 문제이고, **마이그레이션 보강은 B가 7~8주차에 진행**합니다(ROADMAP "필요한 스키마 보강"). A는 `Payment` 엔티티를 만들 때 이 사실만 알고 있으면 됩니다 — 지금 `V1__init.sql`을 고치지 마세요. 이미 적용된 마이그레이션을 수정하면 Flyway 체크섬이 깨져 앱이 안 뜹니다.
+> ⚠️ **다만 현재 확정된 흐름에서는 이 문제가 발생하지 않습니다.** 결제 실패 시 `payment` 행을 애초에 INSERT하지 않고(`02-developer-b-workflow.md`의 `cancelPending()`은 `booking`/`booking_seat`만 CANCELLED로 전환), `payment` INSERT는 T2에서 **성공 시에만** 일어납니다. 재시도는 booking이 CANCELLED된 뒤 **새 `booking_id`로** 시작되므로 유니크 제약에 걸리지 않습니다.
+>
+> 따라서 순서는 이렇습니다: **먼저 "결제 실패 이력을 `payment`에 `FAILED`로 남길 것인가"를 결정**하고(PRD U12), 남기기로 할 때만 `WHERE status='SUCCESS'` 부분 유니크로 전환합니다. 남기지 않으면 현재 스키마 그대로 문제없습니다.
+
+A는 `Payment` 엔티티를 만들 때 이 사실만 알고 있으면 됩니다 — 지금 `V1__init.sql`을 고치지 마세요. 이미 적용된 마이그레이션을 수정하면 Flyway 체크섬이 깨져 앱이 안 뜹니다.
 
 ### 완료 확인
 
@@ -505,7 +509,7 @@ implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5'
 
 ## (1) 프론트 셋업
 
-- **위치 결정 필요**: 같은 레포 `frontend/` 하위 vs 별도 레포 (팀 합의 사항, 로드맵 미결정)
+- **확정**: 같은 레포 `frontend/`, **React + TypeScript + Vite**. 디렉터리 구조·기술 선택·설계 이슈는 [`docs/FRONTEND.md`](../FRONTEND.md)를 그대로 따르세요
 - **CORS 설정**은 A의 `SecurityConfig`에 이미 있습니다. 프론트 개발 서버 포트를 정하면 `setAllowedOrigins`를 맞추세요
 - AI 생성 코드도 **PR 리뷰 대상**입니다. 읽지 않고 머지하지 마세요 — 기획 단계에서 합의한 사항입니다
 
@@ -560,7 +564,7 @@ public abstract class IntegrationTestSupport {
 class AuthServiceTest extends IntegrationTestSupport { ... }
 ```
 
-> **이건 A가 만들지만 진짜 수혜자는 B입니다.** B는 9~10주차에 이 위에서 동시성 통합 테스트를 돌립니다. **B가 착수하기 훨씬 전에 깔아두세요.**
+> **이건 A가 만들지만 진짜 수혜자는 B입니다.** B는 **7~8주차**에 이 위에서 동시성 통합 테스트를 돌립니다. **B가 착수하기 훨씬 전에 깔아두세요.**
 
 ### 완료 후
 
@@ -641,7 +645,7 @@ B가 좌석 선점·예매 확정을 만드는 동안, A는 그 흐름을 화면
 
 ### (선택) 동시성 테스트에 페어 참여
 
-B의 9~10주차 동시성 통합 테스트에 함께 참여하면 A도 이 프로젝트의 핵심 기술을 설명할 수 있게 됩니다. **포트폴리오 균형 차원에서 권장합니다.**
+B의 7~8주차 동시성 통합 테스트에 함께 참여하면 A도 이 프로젝트의 핵심 기술을 설명할 수 있게 됩니다. **포트폴리오 균형 차원에서 권장합니다.**
 
 ---
 
