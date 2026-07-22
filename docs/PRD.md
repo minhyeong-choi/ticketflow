@@ -2,10 +2,12 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | v1.1 |
-| 작성일 / 최종 수정 | 2026-07-22 |
+| 문서 버전 | v1.2 |
+| 작성일 / 최종 수정 | 2026-07-23 |
 | 대상 | 백엔드 개발자 2명 (개발자 A = choimh, 개발자 B = dhyeom) |
 | 상태 | 기술 검증 반영 — 미결정 항목은 본문에 "미결정"으로 표기 |
+
+**v1.2 변경 요약** (범위 확장): 관리자 공연/좌석 CRUD를 **비목표에서 목표로 승격**(신규 5.8절 FR-M1~M3, `ADMIN` role 실사용) · 회원정보 수정 FR-A6/A7·프론트 FR-F8/F9 신설 · `/api/admin/**` 경로 및 ADMIN 인가 추가 · R9·U17~U20 신설.
 
 **v1.1 변경 요약** (기술 검증 반영): TTL 잔여시간 불변식(INV-1/INV-2) 신설 · FR-K4 예외 판별 구체화 · FR-K8~K12 추가 · FR-P3를 조건부로 강등 · 9.1 검증 쿼리를 상태 불일치 5종으로 교체 · S3/S4 비교 지표 명시 · 9~10주차를 공식 버퍼로 선언 · U2/U8 시한 앞당김 · U5를 "즉시 결정"으로 격상 · U12~U16 추가.
 
@@ -55,9 +57,11 @@
 | 실명인증 / 소셜 로그인 | 인증은 자체 JWT 최소 구현이면 목표 검증에 충분 |
 | 스포츠·전시 등 타 도메인 | 좌석 구조가 달라 스키마가 복잡해지고 동시성 검증에 기여하지 않음 |
 | 실서비스급 배포·운영 (오토스케일링, 다중 인스턴스, 모니터링 스택) | 단일 서버 데모로 한정 |
-| 관리자 백오피스 (공연 등록/수정 UI) | 데이터는 시드 스크립트로 투입. `users.role`에 `ADMIN`이 있으나 MVP에서 사용하지 않음 |
+| 실서비스급 관리자 권한관리 (감사 로그, 다단계 권한, 승인 워크플로) | 관리자 CRUD 자체는 **목표로 승격**(5.8절)했으나, `ADMIN` 단일 role 기반 최소 구현까지만. 권한체계 고도화는 동시성과 무관 |
 | 좌석 등급별 할인·쿠폰·포인트 | 가격 계산 복잡도만 늘고 동시성과 무관 |
 | Refresh Token | MVP 생략 가능으로 합의됨. 도입 시 Redis 저장 (`docs/ROADMAP.md` 1~2주차) |
+
+> **v1.2에서 "관리자 백오피스(공연 등록/수정 UI)"를 비목표에서 제거하고 목표로 승격했습니다** (5.8절 FR-M1~M3). FR-B6 시드 데이터는 폐기하지 않고 **초기/부하 테스트 데이터를 멱등하게 대량 투입하는 수단으로 관리자 CRUD와 병존**합니다(수천 좌석을 화면으로 등록하는 것은 비현실적).
 
 ---
 
@@ -70,8 +74,9 @@
 | **일반 예매자** | 오픈 시각 이전부터 대기하다가 좌석을 잡으려는 사용자 | 대기 순번이 보여야 하고, 좌석 선택 후 결제까지 시간 여유가 있어야 하며, 실패 시 이유를 알아야 함 |
 | **동시 접속 부하** (k6 가상 사용자) | 11주차 부하 테스트에서 동일 회차·동일 좌석에 몰리는 수천 개의 가상 사용자 | 락 경합 하에서도 중복 예매 0건, 응답이 무한 대기하지 않을 것 |
 | **평가자 (면접관/리뷰어)** | 코드와 부하 리포트를 보고 설계 의도를 판단하는 사람 | 설계 결정의 **근거**가 문서로 남아 있을 것, 수치로 증명될 것 |
+| **관리자/운영자** | 공연·회차·좌석·등급을 등록/수정/삭제해 예매 대상 데이터를 구성하는 사용자 | `ADMIN` 권한으로만 접근 가능한 CRUD, 이미 `SOLD`이거나 예매가 걸린 좌석·공연의 삭제 방지 |
 
-> `users.role`에 `ADMIN`이 존재하지만 MVP 범위에서 관리자 화면·API는 만들지 않습니다(비목표).
+> `users.role`의 `ADMIN`은 **v1.2부터 실제로 사용합니다** — 관리자 CRUD(5.8절)의 인가 기준입니다. 단 단일 role 기반 최소 구현이며 권한체계 고도화는 비목표입니다.
 
 ---
 
@@ -131,6 +136,8 @@
 | FR-A3 | 내 정보 조회 | P0 | 인증이 필요한 API가 실제로 보호되는지 확인하는 기준 API |
 | FR-A4 | 인증 실패 응답 규격 | P0 | 401/403이 HTML이 아닌 **JSON**으로 반환 (프론트가 파싱 가능해야 함) |
 | FR-A5 | Refresh Token | P2 | 비목표에 준함. 도입 시 Redis 저장 |
+| FR-A6 | 내 정보 수정 | P1 | 이름 등 프로필 수정. `PATCH /api/users/me`. **이메일 변경 허용 여부는 U20 결정에 종속**(허용 시 `uq_users_email` 재검증 필요). 본인만 수정 가능(인가) |
+| FR-A7 | 비밀번호 변경 | P1 | **현재 비밀번호 검증 후** 새 비밀번호를 BCrypt로 재해시. 새 비밀번호는 FR-A1과 동일한 입력 검증 규칙 재사용 |
 
 ### 5.2 공연 카탈로그 (도메인 `performance`/`venue`/`seat` — 담당 B)
 
@@ -215,10 +222,26 @@
 | FR-F5 | 좌석 선택 → 선점 → 결제 → 확정 | P0 | **선점 만료 타이머 UX** — 좌석 락 TTL(7분)에 맞춘 카운트다운 |
 | FR-F6 | 에러 UX | P0 | "이미 예매된 좌석"(409) 등 서버 에러 코드를 사용자 언어로 번역 |
 | FR-F7 | 마이페이지(예매 내역) / 알림 | P1 | 9~10주차 |
+| FR-F8 | 회원정보 수정 화면 | P1 | FR-A6/A7 연동. 마이페이지 내 프로필·비밀번호 변경 |
+| FR-F9 | 관리자 공연/좌석 관리 화면 | P2 | FR-M1~M3 연동. `ADMIN` 계정만 접근하는 별도 라우트. 밀리면 가장 먼저 포기 |
 
 > 프론트 구조·기술 선택·화면별 설계 이슈는 [`docs/FRONTEND.md`](FRONTEND.md)에 분리했습니다 (같은 레포 `frontend/`, React + TS + Vite 확정). AI 생성 코드도 PR 리뷰 대상입니다.
 >
 > **FR-F4·F5는 백엔드 설계에서 파생되는 제약이 있습니다** — 폴링을 멈추면 유령 처리되는데 브라우저가 백그라운드 탭 타이머를 스로틀링하고(순번 상실), 선점 카운트다운은 클라 시계가 아니라 **서버가 준 만료 절대 시각**으로 계산해야 합니다. `FRONTEND.md` 5절 참조.
+
+> **FR-F8·F9는 v1.2 신규 화면입니다** — FR-F8(회원정보 수정)은 마이페이지 내 FR-A6/A7 연동, FR-F9(관리자 카탈로그 관리)는 `ADMIN` 계정만 접근하는 별도 라우트로 FR-M1~M3 연동. **`docs/FRONTEND.md` 라우트/구조 갱신은 이 PRD 범위 밖이며 후속 작업 필요.**
+
+### 5.8 관리자 기능 (도메인 `performance`/`venue`/`seat` — 담당 B)
+
+카탈로그 도메인 코드지만 **`ADMIN` 권한과 `/api/admin/**` 경로로 조회 API와 분리**합니다(SecurityConfig 화이트리스트 충돌 방지 겸). v1.2에서 비목표 → 목표로 승격된 영역입니다.
+
+| ID | 기능 | 우선순위 | 요구사항 |
+|---|---|---|---|
+| FR-M1 | 공연 등록/수정/삭제 | P1 | `performance` + 종속 `seat_grade`(등급·가격) 관리. **공연 1건 = 공연장 1곳** 규칙 유지(7절). 예매/회차가 걸린 공연 삭제는 U19 정책에 종속(거부 또는 상태전환) |
+| FR-M2 | 회차 등록/수정/삭제 | P1 | `session`(`PerformanceSession`) + `booking_open_at`/`booking_close_at`/`session_at`/상태 관리. `booking_open_at`은 대기실 트리거 기준값이므로 시각 정합성 검증 필요 |
+| FR-M3 | 회차 좌석 생성/삭제 | P1 | 회차의 `session_seat`를 공연장 `venue_seat` 기준으로 생성(등급 매핑 포함). **이미 `SOLD`이거나 ACTIVE `booking_seat`가 걸린 좌석의 삭제는 거부** — 4절 ③층과 같은 무결성 방어선. 대량 생성은 FR-B6 시드와 병존(U18로 범위 확정) |
+
+> **모든 FR-M 기능은 `ADMIN` 권한 필수**입니다(9.1.1). 삭제는 예매·`SOLD` 등 참조 무결성이 걸린 경우 hard delete가 아니라 거부/상태전환하며, soft delete 컬럼 추가 여부는 **U19**로 남깁니다. 관리자 CRUD 범위(물리좌석 `venue_seat`까지 vs 회차좌석 `session_seat`만, 등급 포함 여부)는 **U18**에서 확정하세요.
 
 ---
 
@@ -277,7 +300,7 @@
 
 | 테이블 | 역할 | 요구사항 관점에서 중요한 점 |
 |---|---|---|
-| `users` | 회원 | 이메일 유니크, BCrypt 해시, `role`은 `USER`/`ADMIN`(MVP는 USER만 사용) |
+| `users` | 회원 | 이메일 유니크, BCrypt 해시, `role`은 `USER`/`ADMIN`. **`ADMIN`은 v1.2부터 관리자 CRUD(5.8) 인가에 실제 사용** |
 | `venue` / `venue_seat` | 공연장과 **물리 좌석** | 공연장에 고정되어 모든 공연이 재사용. `pos_x`/`pos_y`는 배치도 렌더링용 |
 | `performance` | 공연 | **공연 1건 = 공연장 1곳.** 투어는 별도 공연으로 등록 |
 | `seat_grade` | 등급·가격 | 공연에 종속(등급/가격은 공연마다 다름) |
@@ -308,6 +331,9 @@ seat_grade ──< session_seat          (fk_session_seat_grade — V1__init.sql
 | `booking.expires_at TIMESTAMPTZ` | ✅ 확정 | PENDING 만료 스케줄러의 기준 컬럼이 현재 없음. **단, 컬럼의 *의미*(크래시 복구용 짧은 값 vs 사용자 결제 시간)는 U5 결정에 종속** |
 | `notification` 테이블 신설 | ✅ 확정 | ERD에서 제외되어 있어 알림 이력 적재 불가 (FR-N2). **이벤트 ID 컬럼을 포함**해야 FR-N3(멱등성)이 성립 |
 | `uq_payment_booking` 재설계 | 🟡 **조건부** | FR-P2(결제 실패 이력 적재 여부)를 먼저 결정. 적재할 때만 `WHERE status='SUCCESS'` 부분 유니크 전환이 정당화됨 — 5.5절 주석 참조 |
+| 삭제 정책용 soft delete 컬럼 | 🟡 **조건부** | 관리자 CRUD(FR-M1~M3)의 삭제를 hard delete로 할지 상태전환/`deleted_at` 방식으로 할지에 종속 — **U19에서 결정**. 상태전환 방식이면 `performance`/`session`에 컬럼 추가 마이그레이션 필요 |
+
+> **관리자 CRUD(5.8)는 기존 10개 테이블만으로 동작합니다** — `performance`/`session`/`session_seat`/`seat_grade`는 이미 존재하므로 **신규 테이블은 불필요**. 위 soft delete 컬럼만 U19 결정에 따라 조건부로 추가될 수 있습니다.
 
 ---
 
@@ -319,7 +345,8 @@ seat_grade ──< session_seat          (fk_session_seat_grade — V1__init.sql
 |---|---|---|
 | `/api/auth/**`, `/api/users/**` | **A** | `user` |
 | `/api/payments/**` | **A** | `payment` |
-| `/api/performances/**`, `/api/sessions/**` | **B** | 카탈로그 |
+| `/api/performances/**`, `/api/sessions/**` | **B** | 카탈로그 (공개 조회) |
+| `/api/admin/**` | **B** | 카탈로그 관리 (FR-M, **ADMIN 전용**) |
 | `/api/waiting/**` | **B** | `waitingroom` |
 | `/api/bookings/**` | **B** | `booking` |
 
@@ -330,6 +357,8 @@ seat_grade ──< session_seat          (fk_session_seat_grade — V1__init.sql
 | `POST` | `/api/auth/signup` | ❌ | 회원가입 (FR-A1) | A |
 | `POST` | `/api/auth/login` | ❌ | 로그인 → 토큰 (FR-A2) | A |
 | `GET` | `/api/users/me` | ✅ | 내 정보 (FR-A3) | A |
+| `PATCH` | `/api/users/me` | ✅ | 내 정보 수정 (FR-A6) | A |
+| `PATCH` | `/api/users/me/password` | ✅ | 비밀번호 변경 (FR-A7) | A |
 | `GET` | `/api/performances` | ❌ | 공연 목록 (페이징, FR-B1) | B |
 | `GET` | `/api/performances/{id}` | ❌ | 공연 상세 + 회차 (FR-B2) | B |
 | `GET` | `/api/sessions/{id}/seats/summary` | ❌ | 등급/구역별 잔여 수 (FR-B3) | B |
@@ -342,12 +371,17 @@ seat_grade ──< session_seat          (fk_session_seat_grade — V1__init.sql
 | `DELETE` | `/api/bookings/{id}` | ✅ | 예매 취소 (FR-K6) | B |
 | `GET` | `/api/bookings` | ✅ | 내 예매 목록 (FR-K7) | B |
 | `GET` | `/api/bookings/{id}` | ✅ | 예매 상세 (FR-K7) | B |
+| `POST` `PATCH` `DELETE` | `/api/admin/performances[/{id}]` | ✅ ADMIN | 공연 등록/수정/삭제 (FR-M1) | B |
+| `POST` `PATCH` `DELETE` | `/api/admin/sessions[/{id}]` | ✅ ADMIN | 회차 등록/수정/삭제 (FR-M2) | B |
+| `POST` `DELETE` | `/api/admin/sessions/{id}/seats` | ✅ ADMIN | 회차 좌석 생성/삭제 (FR-M3) | B |
 
 > **🔴 예매 확정 API의 형태와 경로는 미결정입니다 (U5 — 즉시 결정 필요).** 단일 요청 확정인지 2단계 확정인지에 따라 FR-K3·FR-K5·6.1·6.2·7절 스키마 보강·G3 검증 방법이 **전부 달라집니다.** 7주차까지 미루면 안 됩니다.
 >
 > **`/api/payments/**`에는 현재 엔드포인트가 없습니다.** 결제는 HTTP가 아니라 **인프로세스 호출**로 합의돼 있습니다 — B의 `BookingFacade`가 A의 `PaymentService.pay(bookingId, amount)`를 직접 호출하고, `payment` INSERT는 B의 T2 안에서 일어납니다(`docs/study/01-developer-a-workflow.md:592-616`, `02-developer-b-workflow.md:1071`). 위 prefix 표의 `/api/payments/**`는 **경로 예약**이며, 프론트가 직접 호출할 결제 화면이 필요한지는 **확인 필요**(`01-developer-a-workflow.md:631`에 "화면 연동" 언급).
 >
 > **인증 필요 여부는 위 표가 초안**이며, 카탈로그 조회를 비로그인에 열지 여부는 SP2에서 확정합니다.
+>
+> **`/api/admin/**`는 인증(✅)에 더해 `ADMIN` role을 요구합니다** — `SecurityConfig`에서 `hasRole('ADMIN')`으로 강제(9.1.1). 관리자 화면(FR-F9)이 이 계약에 연동되며, ADMIN 계정 부여 방식은 **U17**로 남깁니다. 삭제 시 참조 무결성 처리(U19)는 5.8절 참조.
 
 ### API 계약 규칙
 
@@ -396,7 +430,8 @@ seat_grade ──< session_seat          (fk_session_seat_grade — V1__init.sql
 
 | 항목 | 요구사항 |
 |---|---|
-| 인가 | 예매 목록·상세(FR-K7)는 **본인 것만** 조회. 취소는 소유자 확인 필수 |
+| 인가 (본인) | 예매 목록·상세(FR-K7)는 **본인 것만** 조회. 취소는 소유자 확인 필수. 회원정보 수정(FR-A6/A7)도 본인만 |
+| 인가 (ADMIN) | **관리자 API(`/api/admin/**`, FR-M1~M3)는 `ADMIN` role만** — `SecurityConfig`에서 `hasRole('ADMIN')` 강제. USER 토큰 접근 시 **403(JSON, FR-A4 규격 재사용)**. 클라이언트 화면 숨김에 의존하지 말고 서버에서 차단 |
 | 입력 검증 | 이메일 형식·비밀번호 최소 길이 등. DTO `@Valid` 누락 시 검증이 통째로 무력화됨 |
 | CORS | 프론트가 별도 오리진이므로 정책 필요 (`ROADMAP.md:304`) |
 | 남용 방지 | 같은 사용자의 무한 hold/대기열 요청에 대한 제한 — **도입 여부 미결정** |
@@ -485,7 +520,7 @@ seat_grade ──< session_seat          (fk_session_seat_grade — V1__init.sql
 | | 개발자 A — **choimh** | 개발자 B — **dhyeom** |
 |---|---|---|
 | 한 줄 정체성 | 프론트 + 인증/게이트웨이 + 통합 | 동시성 코어 + 카탈로그 |
-| 백엔드 도메인 | `user`(인증/JWT), `payment`(Mock), `global`(공통 인프라) | `performance`/`venue`/`seat`(카탈로그), `booking`(선점·확정), `waitingroom`, `notification` |
+| 백엔드 도메인 | `user`(인증/JWT + **회원정보 수정 FR-A6/A7**), `payment`(Mock), `global`(공통 인프라 + **ADMIN 인가**) | `performance`/`venue`/`seat`(카탈로그 + **관리자 CRUD FR-M1~M3**), `booking`(선점·확정), `waitingroom`, `notification` |
 | 프론트엔드 | **전체 소유** (AI 생성 + 유지보수) | 없음 (PR 리뷰만) |
 | 포트폴리오 강점 | 인증·전체 통합·프론트 연동 | Redis 분산락·대기열·Kafka·부하 대응 |
 
@@ -512,6 +547,11 @@ seat_grade ──< session_seat          (fk_session_seat_grade — V1__init.sql
 > **⚠️ 12주 계획에 버퍼 주차가 0개입니다.** 어느 한 구간이 1주만 밀려도 11주차 부하 테스트가 잘리는데, 그 구간이 **S1·S3·S4의 유일한 증거 생산처**입니다(11절은 "S1·S2가 없으면 실패"라고 선언). 
 > → **9~10주차(FR-N 전체가 P1)를 공식 버퍼로 선언합니다.** 7~8주차가 밀리면 Kafka를 압축하거나 포기하고, 11주차 부하 테스트는 **어떤 경우에도 사수**합니다.
 > → 7~8주차 산출물이 실제로는 10개 이상(선점·해제 API, Facade/Transaction 분리, T1/T2, 보상 경로, 만료 스케줄러, 취소 API, 예외 매핑, 마이그레이션 2건, 동시성 테스트)이므로, **FR-K5(만료 스케줄러)와 FR-K6(취소, 이미 P1)은 9주차로 미룰 수 있는 항목**으로 지정합니다.
+
+> **v1.2 신규 항목 배치 (R9 참조)** — 범위가 늘었으나 버퍼는 여전히 0이므로, 신규 항목은 **핵심 목표(G1~G3)를 침범하지 않도록 P1/P2로 배치하고 이월 가능**으로 둡니다.
+> - **FR-A6/A7(회원정보 수정)**: 1~2주차 인증과 함께 — 단순 CRUD라 부담 경미.
+> - **FR-M1~M3(관리자 카탈로그 CRUD)**: 3~4주차 카탈로그와 함께 — 같은 도메인·단순 CRUD이므로 그 위에 얹음. 밀리면 FR-B6 시드로 대체 가능하므로 **가장 먼저 포기할 후보**.
+> - **FR-F8/F9(수정·관리자 화면)**: 9~10주차 버퍼. **부하 테스트(11주차)와 상충하면 F9를 우선 포기.**
 
 ### 10.3 현재 진척도 (2026-07-22 기준)
 
@@ -565,6 +605,7 @@ seat_grade ──< session_seat          (fk_session_seat_grade — V1__init.sql
 | R6-3 | **Redis 키 네이밍 불일치** — `seat:lock:` vs `seat:hold:` | 문서 간 grep 어긋남, 구현 혼선 | 구현 전 통일 (8절) |
 | R7 | `master` 직접 커밋 관행이 아직 남아 있음 | 리뷰 없이 공유 기반이 흔들림 | 1주차 내 feature 브랜치 + PR로 전환 |
 | R8 | AI 생성 프론트 코드의 품질 방치 | 리뷰 불가능한 코드 누적 | 프론트도 PR 리뷰 대상 (합의 사항) |
+| R9 | **v1.2 범위 확장** (관리자 CRUD FR-M, 회원정보 수정 FR-A6/A7, 관리자 화면 FR-F9)이 버퍼 0 계획에 추가 부담 | 밀리면 11주차 부하 테스트(S1·S3·S4 증거 생산처)가 잘림 | 신규 항목 전부 **P1/P2 + 이월 가능**으로 배치(10.2절). 동시성 코어(G1~G3, S1~S4) 절대 우선. FR-M은 밀리면 FR-B6 시드로 대체 |
 
 ### 12.2 미결정 사항
 
@@ -586,6 +627,10 @@ seat_grade ──< session_seat          (fk_session_seat_grade — V1__init.sql
 | U14 | Redis 장애 시 가용성 정책 (fail-closed 확정 / 복구 절차) | 9.2.1 참조, 10주차 |
 | U15 | 좌석 락 소유자 값 — `userId` vs hold 단위 랜덤 토큰 (다중 탭 오삭제) | 7주차 착수 전 |
 | U16 | 좌석 배치도 응답 크기 상한 X KB (FR-B4) | 3주차 |
+| U17 | ADMIN 계정 부여 방식 (시드로 ADMIN 1계정 생성 vs 기존 계정 수동 승격) — FR-M 인가의 전제 | 3주차 |
+| U18 | 관리자 좌석 CRUD 범위 (회차 `session_seat`만 vs 공연장 `venue_seat` 물리좌석까지, 등급 `seat_grade` 포함 여부) — FR-M3 | 3주차 |
+| U19 | 삭제 정책 (예매·`SOLD`가 걸린 공연·좌석의 hard delete vs 거부/상태전환, soft delete 컬럼 추가 여부) — FR-M1~M3 (7절) | 3주차 |
+| U20 | 회원정보 수정 시 이메일 변경 허용 여부 (허용 시 `uq_users_email` 재검증) — FR-A6 | 2주차 |
 
 ---
 

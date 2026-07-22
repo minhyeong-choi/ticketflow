@@ -2,10 +2,12 @@
 
 | 항목 | 내용 |
 |---|---|
-| 문서 버전 | v1.0 |
-| 작성일 | 2026-07-22 |
+| 문서 버전 | v1.1 |
+| 작성일 / 최종 수정 | 2026-07-22 / 2026-07-23 |
 | 소유자 | 개발자 A (choimh) — 작성·유지보수 책임. B는 PR에서 **API 연동 관점** 리뷰 |
-| 근거 문서 | [`docs/PRD.md`](PRD.md) 5.7절(FR-F1~F7) · [`CLAUDE.md`](../CLAUDE.md) · [`docs/study/01-developer-a-workflow.md`](study/01-developer-a-workflow.md) |
+| 근거 문서 | [`docs/PRD.md`](PRD.md) 5.7절(FR-F1~F9) · 5.8절(FR-M1~M3) · [`CLAUDE.md`](../CLAUDE.md) · [`docs/study/01-developer-a-workflow.md`](study/01-developer-a-workflow.md) |
+
+> **v1.1 변경 요약** (PRD v1.2 반영): 회원정보 수정 화면(FR-F8) · 관리자 카탈로그 관리 화면(FR-F9) 추가 · `features/admin/` 슬라이스 신설 · 라우트·주차별 산출물·B 요청 계약(C7) 반영.
 
 > 이 문서는 **프론트엔드의 구조와 설계 결정**만 다룹니다. 화면별 요구사항은 PRD 5.7, 주차별 진행 순서는 `docs/study/01-developer-a-workflow.md`를 보세요.
 
@@ -44,7 +46,8 @@ ticketflow/
 │  │  │  ├─ waiting/
 │  │  │  ├─ booking/
 │  │  │  ├─ payment/
-│  │  │  └─ mypage/
+│  │  │  ├─ mypage/            # 예매 내역 + 회원정보 수정 (FR-F7·F8)
+│  │  │  └─ admin/             # 관리자 카탈로그 관리 (FR-F9, ADMIN 전용) — P2
 │  │  │
 │  │  ├─ api/
 │  │  │  ├─ client.ts            # fetch 래퍼 — ApiResponse 언랩, 토큰 주입, 에러 정규화
@@ -270,6 +273,8 @@ src/lib/errorMessages.ts
 | `/bookings/:id/complete` | 완료 | FR-F5 | ✅ | |
 | `/mypage/bookings` | 예매 내역 | FR-F7 | ✅ | |
 | `/mypage/notifications` | 알림 | FR-F7 | ✅ | 9~10주차(버퍼 구간) |
+| `/mypage/edit` | 회원정보 수정 (프로필·비밀번호) | FR-F8 | ✅ | FR-A6/A7 연동. `PATCH /api/users/me`·`.../password` |
+| `/admin/performances` | 관리자 공연/회차/좌석 관리 | FR-F9 | ✅ **ADMIN** | FR-M1~M3 연동. **P2 — 밀리면 우선 포기** |
 
 > 🔴 **`/bookings/confirm` 화면의 존재 자체가 PRD U5에 종속됩니다.** 확정이 **단일 요청**이면 이 화면은 "확인 후 버튼 1회" 수준이고 결제 입력 단계가 없습니다. **2단계 확정**이면 결제 정보 입력 화면이 실재하고 그 체류 시간 동안 ②의 타이머가 핵심 UX가 됩니다. **U5가 정해지기 전에는 이 화면을 만들지 마세요** — 7~8주차 작업이므로 시간은 있습니다.
 
@@ -278,6 +283,7 @@ src/lib/errorMessages.ts
 | 가드 | 대상 | 실패 시 |
 |---|---|---|
 | 인증 | 위 표의 ✅ 경로 | `/login`으로, 복귀 경로 보존 |
+| **ADMIN role** | `/admin/**` | 403 안내 화면 또는 `/`로. **화면 숨김에 의존하지 말 것 — 서버가 `hasRole('ADMIN')`로 최종 차단**(PRD 9.1.1) |
 | 입장 토큰 | `/sessions/:id/seats` | `/sessions/:id/waiting`으로 되돌림 |
 | 선점 유효 | `/bookings/confirm` | 좌석 선택 화면으로 되돌림 |
 
@@ -318,7 +324,7 @@ jobs:
 | 3~4 | `frontend/` 셋업, 라우터·`client.ts`·MSW 골격, 인증 화면(실 API), 카탈로그 화면(Mock) | SP2에서 실 API 전환 |
 | 5~6 | 대기 순번 화면 (폴링·visibility 처리) | B의 대기실 API (SP3) |
 | 7~8 | 좌석 배치도, 선점 타이머, 예매 플로우 | B의 선점·확정 API (SP4), **U5 확정 필요** |
-| 9~10 | 마이페이지, 알림, UX 정리 | 버퍼 구간 — 압축 가능 |
+| 9~10 | 마이페이지, **회원정보 수정(FR-F8)**, 알림, UX 정리 / **관리자 화면(FR-F9, P2)** | 버퍼 구간 — 압축 가능. **F9는 부하 테스트(11주차)와 상충 시 우선 포기** |
 | 11~12 | 데모 시나리오, 부하 테스트용 계정 생성 스크립트 | |
 
 ---
@@ -335,6 +341,7 @@ jobs:
 | C4 | 확정 요청의 **멱등성 키 헤더 이름** | 5절 ④ / PRD FR-K9 |
 | C5 | 폴링 주기와 **유령 판정 TTL의 비율** | 5절 ① — 백그라운드 탭에서 순번 상실 방지 |
 | C6 | `ErrorCode` 문자열 목록 | 5절 ⑦ 번역 테이블. 코드가 추가되면 알려줄 것 |
+| C7 | 관리자 CRUD(`/api/admin/**`, FR-M1~M3) 요청/응답 스키마 | FR-F9 화면 연동. **P2이므로 SP2가 아니라 관리자 화면 착수(9~10주차) 직전 합의**로 충분 |
 
 ---
 
