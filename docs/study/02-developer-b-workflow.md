@@ -9,11 +9,11 @@
 
 | 도메인 | 내용 |
 |---|---|
-| `domain/performance` | 공연/공연장/회차/좌석 **카탈로그** + 시드 데이터 (`Venue`·`VenueSeat`·`SeatGrade`·`SessionSeat` 포함) |
+| `domain/performance` | 공연/공연장/회차/좌석 **카탈로그** + 시드 데이터 + **관리자 CRUD(FR-M1~M3)** (`Venue`·`VenueSeat`·`SeatGrade`·`SessionSeat` 포함) |
 | `domain/waitingroom` | 가상 대기실 (Redis ZSET) |
 | `domain/booking` | **좌석 선점(분산 락), 예매 확정(T1/T2), 취소, 예매 내역** |
 | `domain/notification` | Kafka consumer + 알림 적재 |
-| API 경로 | `/api/performances/**`, `/api/sessions/**`, `/api/waiting/**`, `/api/bookings/**` |
+| API 경로 | `/api/performances/**`, `/api/sessions/**`, `/api/admin/**`(관리자), `/api/waiting/**`, `/api/bookings/**` |
 
 **B는 이 프로젝트의 동시성 코어를 통째로 소유합니다.** 대기실 → 좌석 선점 → 예매 확정이 하나의 흐름이고, 이걸 두 사람이 나누면 락·트랜잭션 버그가 반드시 납니다. 그래서 B가 일관되게 갖습니다. **포트폴리오에서 "Redis 분산락·대기열·Kafka·부하 대응"을 말할 수 있는 사람이 B입니다.**
 
@@ -23,8 +23,8 @@
 
 | 주차 | 할 일 | 산출물 / A와의 관계 |
 |---|---|---|
-| 1~2 | 카탈로그·예매 엔티티 8종 + **시드 데이터** | 앱이 뜬다 = 스키마 정합성 증명 |
-| 3~4 | 카탈로그 조회 API + **OpenAPI 명세 확정** | A의 프론트가 Mock→실 API로 전환하는 근거 (SP2) |
+| 1~2 | 카탈로그·예매 엔티티 8종 + **시드 데이터**(+ ADMIN 계정 1개) | 앱이 뜬다 = 스키마 정합성 증명 |
+| 3~4 | 카탈로그 조회 API + **관리자 CRUD(FR-M, P1·이월 가능)** + **OpenAPI 명세 확정** | A의 프론트가 Mock→실 API로 전환하는 근거 (SP2) |
 | 5~6 | 가상 대기실 (Redis ZSET) + 좌석 락 PoC | 락 동작 원리를 손으로 확인 (SP3) |
 | 7~8 | **좌석 선점 + 예매 확정 T1/T2 + 취소 + 동시성 통합 테스트** ★ 최난도 | 동시 요청에 1건만 성공 (SP4) |
 | 9~10 | Kafka + `notification` + 예매 내역 (**일정 버퍼 구간**) | 이벤트 기반 확장 (SP5) |
@@ -40,8 +40,9 @@
 | `CustomUserDetails`에서 `userId` 꺼내는 법 | A | **B** (모든 인증 API) | SP1 (2주차 말) |
 | `PaymentService.pay(bookingId, amount)` | A | **B** (`BookingFacade`가 호출) | 6주차 말 |
 | `SecurityConfig` 화이트리스트에 B 경로 추가 | A | **B** | 필요할 때마다 요청 |
-| **시드 데이터** | **B** | A (프론트가 볼 실데이터) | 2주차 말 |
-| **OpenAPI 명세** | **B** | A (프론트 Mock→실 API) | SP2 (4주차 말) |
+| **`/api/admin/**` → `hasRole('ADMIN')` 규칙** | A(`SecurityConfig`) | **B** (관리자 CRUD가 이 위에 얹힘) | 관리자 CRUD 착수 전(3주차) |
+| **시드 데이터**(+ **ADMIN 계정 1개**) | **B** | A (프론트가 볼 실데이터, 관리자 로그인) | 2주차 말 |
+| **OpenAPI 명세**(카탈로그·대기실·예매·**관리자 CRUD**) | **B** | A (프론트 Mock→실 API) | SP2 (4주차 말) |
 | 좌석 락 TTL / 입장 토큰 TTL / 결제 제한시간 | **B가 결정** | A (화면 타이머) | 7주차 전 |
 
 > **`global/` 하위는 A 소유이자 공유 기반입니다.** `SecurityConfig`에 경로를 추가해야 하면 직접 고치지 말고 A에게 요청하세요(`CLAUDE.md` 규칙).
@@ -338,6 +339,7 @@ WHERE s.id = ?;
 | `seat_grade` | 공연당 4종 (VIP/R/S/A) |
 | `session` | 공연당 3~5회차 |
 | `session_seat` | 회차 × 1,200 |
+| `users` (ADMIN) | **1계정** — `role='ADMIN'`, 관리자 CRUD(FR-M) 인가 테스트용 (PRD U17) |
 
 > **`booking_open_at`을 다양하게 두세요.** 이미 열린 회차(과거), 곧 열릴 회차(몇 분 후), 나중 회차(내일)를 섞어야 5~6주차 대기실 로직을 테스트할 수 있습니다.
 
@@ -496,7 +498,27 @@ public record SeatPriceInfo(Long sessionSeatId, String gradeName, int price) {}
 
 **PR**: `feat: 공연/회차/좌석 조회 API 구현`
 
-**완료 기준**: 프론트(A)에서 목록 → 상세 → 좌석 배치도 조회 가능 + OpenAPI 명세 확정
+## (5) 관리자 카탈로그 CRUD (FR-M1~M3) ★ P1 · 이월 가능
+
+조회 API와 **같은 엔티티**를 쓰므로 여기에 얹습니다. 단 `/api/admin/**` 경로 + `ADMIN` 권한으로 조회와 분리합니다. **밀리면 시드(1~2주차)로 대체 가능하므로 3~4주차에서 가장 먼저 포기할 후보**입니다(PRD R9).
+
+| 메서드 | 경로 | FR | 설명 |
+|---|---|---|---|
+| `POST` `PATCH` `DELETE` | `/api/admin/performances[/{id}]` | FR-M1 | 공연 + 등급(`seat_grade`) 관리 |
+| `POST` `PATCH` `DELETE` | `/api/admin/sessions[/{id}]` | FR-M2 | 회차 관리 (`booking_open_at` 시각 정합성 검증) |
+| `POST` `DELETE` | `/api/admin/sessions/{id}/seats` | FR-M3 | 회차 좌석 생성/삭제 |
+
+### 착수 전 3가지
+
+1. **A에게 `/api/admin/**` → `hasRole('ADMIN')` 규칙을 `SecurityConfig`에 넣어달라고 요청**하세요. `global/`은 A 소유이므로 직접 고치지 않습니다.
+2. **삭제 시 참조 무결성 방어** — 이미 `SOLD`이거나 ACTIVE `booking_seat`가 걸린 좌석·공연은 hard delete하지 말고 거부(또는 상태전환)합니다. 이건 4겹 방어선의 연장선입니다. hard/soft 방식은 **PRD U19**로 결정.
+3. **좌석 CRUD 범위**(회차 `session_seat`만 vs 물리 `venue_seat`까지, 등급 포함 여부)는 **PRD U18**로 먼저 확정하세요. 대량 좌석 생성은 시드의 `INSERT ... SELECT`(Day 4~7) 로직을 재사용합니다.
+
+> **컨트롤러만 새로 만들고 Service·Repository는 조회와 공유**하면 됩니다. `PerformanceService`에 `create/update/delete`를 추가하고, 관리자 전용 컨트롤러(`AdminPerformanceController` 등)에서 호출하는 형태가 깔끔합니다.
+
+**PR**: `feat: 관리자 공연/회차/좌석 CRUD API 구현`
+
+**완료 기준**: 프론트(A)에서 목록 → 상세 → 좌석 배치도 조회 가능 + OpenAPI 명세 확정. (관리자 CRUD는 이월 가능 — 완료 시 SOLD 좌석 삭제 거부까지 확인)
 
 ---
 
