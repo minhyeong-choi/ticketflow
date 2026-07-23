@@ -3,21 +3,21 @@ package com.ticket.ticketflow.global.common;
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import lombok.Getter;
 
 import java.time.OffsetDateTime;
 
 @Getter
 @MappedSuperclass
-public abstract class BaseCreatedEntity {
+public abstract class BaseTimeEntity extends BaseCreatedEntity{
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt;
 
     @PrePersist
-    void onCreate() {
-        if(this.createdAt == null) {
-            this.createdAt = OffsetDateTime.now();
-        }
+    @PreUpdate
+    void onSave() {
+        this.updatedAt = OffsetDateTime.now();
     }
 }
