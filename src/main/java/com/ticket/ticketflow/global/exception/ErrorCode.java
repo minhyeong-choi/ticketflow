@@ -1,4 +1,10 @@
 package com.ticket.ticketflow.global.exception;
 
-public class ErrorCode {
+import org.springframework.http.HttpStatus;
+
+public interface ErrorCode {
+    String getCode();
+    HttpStatus getHttpStatus();
+    String getMessage();
+
 }
