@@ -10,29 +10,33 @@ import java.util.List;
 
 public class CustomUserDetails implements UserDetails {
 
-    private final User user;
+    private final Long userId;
+    private final String email;
+    private final String role;
 
-    public CustomUserDetails(User user) {
-        this.user = user;
+    public CustomUserDetails(Long userId, String email, String role) {
+        this.userId = userId;
+        this.email = email;
+        this.role = role;
     }
 
     public Long getUserId() {
-        return user.getId();
+        return userId;
     }
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()));
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role));
     }
 
     @Override
     public String getPassword() {
-        return user.getPassword();
+        return null;
     }
 
     @Override
     public String getUsername() {
-        return user.getEmail();
+        return email;
     }
 
     @Override

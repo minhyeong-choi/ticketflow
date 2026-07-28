@@ -21,7 +21,13 @@ public class ApiResponse<T> {
         return new ApiResponse<>(true, data, null, null);
     }
 
+    // enum에 이미 정의된 고정 메시지를 그대로 쓸 때
     public static ApiResponse<Void> error(ErrorCode errorCode) {
         return new ApiResponse<>(false, null, errorCode.getCode(), errorCode.getMessage());
+    }
+
+    // 요청마다 메시지가 달라질 때(검증 실패 필드 목록 등)
+    public static ApiResponse<Void> fail(String code, String message) {
+        return new ApiResponse<>(false, null, code, message);
     }
 }
