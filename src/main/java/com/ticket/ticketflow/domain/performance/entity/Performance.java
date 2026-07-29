@@ -5,7 +5,6 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.flywaydb.core.internal.jdbc.TransactionalExecutionTemplate;
 
 @Entity
 @Table(name = "performance")
@@ -184,7 +183,7 @@ public class Performance extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     @Column(
             name = "status",
-            length = 50
+            length = 20
     )
     private PerformanceStatus status = PerformanceStatus.SCHEDULED;
 

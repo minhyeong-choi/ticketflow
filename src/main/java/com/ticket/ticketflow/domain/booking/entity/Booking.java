@@ -1,5 +1,6 @@
 package com.ticket.ticketflow.domain.booking.entity;
 
+import com.ticket.ticketflow.domain.performance.entity.PerformanceSession;
 import com.ticket.ticketflow.domain.user.entity.User;
 import com.ticket.ticketflow.global.common.BaseCreatedEntity;
 import jakarta.persistence.*;
@@ -23,13 +24,26 @@ public class Booking extends BaseCreatedEntity {
     @Column(name = "booking_number", nullable = false, length = 30)
     private String bookingNumber;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(
+            fetch = FetchType.LAZY,
+            optional = false
+    )
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    // TODO: PerformanceSession 엔티티 생성 후 @ManyToOne(fetch = LAZY) @JoinColumn(name = "session_id")로 교체
-    @Column(name = "session_id", nullable = false)
-    private Long sessionId;
+    @ManyToOne(
+            fetch = FetchType.LAZY,
+            optional = false
+    )
+    @JoinColumn(
+            name = "session_id",
+            nullable = false,
+            updatable = false,
+            foreignKey = @ForeignKey(
+                    name = "fk_booking_session"
+            )
+    )
+    private PerformanceSession performanceSession;
 
     @Column(name = "total_amount", nullable = false)
     private Integer totalAmount;
@@ -45,10 +59,10 @@ public class Booking extends BaseCreatedEntity {
     private OffsetDateTime cancelledAt;
 
     @Builder
-    private Booking(String bookingNumber, User user, Long sessionId, Integer totalAmount) {
+    private Booking(String bookingNumber, User user, PerformanceSession performanceSession, Integer totalAmount) {
         this.bookingNumber = bookingNumber;
         this.user = user;
-        this.sessionId = sessionId;
+        this.performanceSession = performanceSession;
         this.totalAmount = totalAmount;
         this.status = BookingStatus.PENDING;
     }
