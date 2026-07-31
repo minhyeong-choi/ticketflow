@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+/*
+ * 팔레트 — "무대 뒤(backstage)"를 배경으로, 조명(marquee)과 앙코르(encore) 두 개의
+ * 신호색을 목적별로 분리해 쓴다. void/curtain은 회색이 아니라 보라 기가 있는
+ * 남색이라 "근흑색+단일 비비드 강조색" 패턴과 톤 자체가 다르다.
+ */
+@theme {
+  --color-void: #120b22;
+  --color-curtain: #1e1533;
+  --color-curtain-light: #2a2044;
+  --color-marquee: #f2b705;
+  --color-marquee-dim: #b98a06;
+  --color-encore: #ff5a5f;
+  --color-paper: #f3ead3;
+  --color-mist: #9089ac;
+  --color-chalk: #f4f1fa;
+
+  --font-display: "Black Han Sans", "Malgun Gothic", sans-serif;
+  --font-label: "Oswald", "Malgun Gothic", sans-serif;
+  --font-body: "Pretendard Variable", "Pretendard", "Malgun Gothic", sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-void text-chalk antialiased;
+  font-family: var(--font-body);
+}
+
+::selection {
+  background-color: var(--color-marquee);
+  color: var(--color-void);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-marquee);
+  outline-offset: 2px;
+}
+
+/* 티켓 절취선 — 좌우 반원 노치를 실제로 도려낸다(mask). 배경이 무엇이든 안전하다. */
+.ticket-notch {
+  --notch-y: 68%;
+  --notch-r: 9px;
+  mask-image:
+    radial-gradient(circle var(--notch-r) at 0 var(--notch-y), transparent 99%, black 100%),
+    radial-gradient(circle var(--notch-r) at 100% var(--notch-y), transparent 99%, black 100%);
+  mask-composite: intersect;
+  -webkit-mask-image:
+    radial-gradient(circle var(--notch-r) at 0 var(--notch-y), transparent 99%, black 100%),
+    radial-gradient(circle var(--notch-r) at 100% var(--notch-y), transparent 99%, black 100%);
+  -webkit-mask-composite: source-in;
+}
+
+.ticket-tear-line {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 68%;
+  border-top: 2px dashed color-mix(in srgb, var(--color-mist) 45%, transparent);
+}
+
+.ticket-barcode {
+  background-color: var(--color-paper);
+  background-image: repeating-linear-gradient(
+    90deg,
+    var(--color-void) 0 3px,
+    transparent 3px 5px,
+    var(--color-void) 5px 6px,
+    transparent 6px 10px,
+    var(--color-void) 10px 13px,
+    transparent 13px 15px,
+    var(--color-void) 15px 16px,
+    transparent 16px 21px
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
