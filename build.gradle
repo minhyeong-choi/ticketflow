@@ -50,6 +50,11 @@ dependencies {
 	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 	testImplementation 'org.springframework.kafka:spring-kafka-test'
 
+	//Testcontainers 도입
+	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+	testImplementation 'org.testcontainers:testcontainers-postgresql'
+
 }
 
 tasks.named('test') {
