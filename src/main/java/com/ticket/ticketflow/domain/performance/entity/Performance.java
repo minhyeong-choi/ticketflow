@@ -183,6 +183,7 @@ public class Performance extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     @Column(
             name = "status",
+            nullable = false,
             length = 20
     )
     private PerformanceStatus status = PerformanceStatus.SCHEDULED;
