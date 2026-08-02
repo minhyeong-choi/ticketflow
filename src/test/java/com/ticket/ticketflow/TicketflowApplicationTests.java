@@ -1,10 +1,10 @@
 package com.ticket.ticketflow;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
-class TicketflowApplicationTests {
+import com.ticket.ticketflow.support.IntegrationTestSupport;
+
+class TicketflowApplicationTests extends IntegrationTestSupport {
 
 	@Test
 	void contextLoads() {
