@@ -6,11 +6,13 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
 
+import com.ticket.ticketflow.support.DataJpaTestSupport;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-class VenueSeatTest {
+class VenueSeatTest extends DataJpaTestSupport {
 
     @Autowired
     private TestEntityManager em;
