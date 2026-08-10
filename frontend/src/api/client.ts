@@ -8,8 +8,16 @@ interface RequestOptions extends RequestInit {
   skipAuth?: boolean
 }
 
+interface RawResult<T> {
+  data: T
+  response: Response
+}
+
 // 이 파일이 fetch를 감싸는 유일한 통로다 — 토큰 주입/ApiResponse 언랩/에러 정규화가 모두 여기 한 곳에만 있다.
-export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+// requestRaw는 raw Response까지 반환하는 내부 헬퍼다. 대부분의 화면은 아래 request()/apiClient의
+// data-only 반환으로 충분하지만, 좌석 선점(hold) 응답만은 Date 헤더로 서버-클라 시계 오프셋을 보정해야
+// 해서(FRONTEND.md 5절②) apiClient.postWithHeaders가 이 헬퍼를 그대로 노출한다.
+async function requestRaw<T>(path: string, options: RequestOptions = {}): Promise<RawResult<T>> {
   const { skipAuth, headers, ...rest } = options
   const accessToken = useAuthStore.getState().accessToken
 
@@ -33,7 +41,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     if (!response.ok) {
       throw new ApiError('COMMON_004', '서버 응답을 처리할 수 없습니다.', response.status)
     }
-    return null as T
+    return { data: null as T, response }
   }
 
   if (!body.success) {
@@ -49,7 +57,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     throw new ApiError(code, message, response.status)
   }
 
-  return body.data as T
+  return { data: body.data as T, response }
+}
+
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const { data } = await requestRaw<T>(path, options)
+  return data
 }
 
 export const apiClient = {
@@ -59,4 +72,8 @@ export const apiClient = {
   patch: <T>(path: string, data?: unknown, options?: RequestOptions) =>
     request<T>(path, { ...options, method: 'PATCH', body: data !== undefined ? JSON.stringify(data) : undefined }),
   delete: <T>(path: string, options?: RequestOptions) => request<T>(path, { ...options, method: 'DELETE' }),
+  // POST + raw Response 반환. 지금은 좌석 선점(hold) 한 곳만 쓴다 — data만 반환하는 위 post()로는
+  // Date 헤더(clock offset 보정용, FRONTEND.md 5절②)에 접근할 수 없어서 별도로 둔다.
+  postWithHeaders: <T>(path: string, data?: unknown, options?: RequestOptions) =>
+    requestRaw<T>(path, { ...options, method: 'POST', body: data !== undefined ? JSON.stringify(data) : undefined }),
 }

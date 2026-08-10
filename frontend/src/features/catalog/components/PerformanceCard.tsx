@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PosterPlaceholder } from '../../../components/PosterPlaceholder'
 import { formatDateRange, formatPriceRange } from '../../../lib/format'
 import { GENRE_LABEL, GENRE_STYLE, STATUS_LABEL, STATUS_STYLE } from '../labels'
@@ -14,7 +15,8 @@ export function PerformanceCard({ performance }: PerformanceCardProps) {
   const hasImage = performance.posterImageUrl !== '' && !imageFailed
 
   return (
-    <article
+    <Link
+      to={`/performances/${performance.id}`}
       className={`group flex flex-col overflow-hidden bg-curtain shadow-lg shadow-black/30 ring-1 ring-white/5 transition-all duration-200 [clip-path:polygon(0_0,calc(100%-16px)_0,100%_16px,100%_100%,0_100%)] ${
         isClosed
           ? 'opacity-60'
@@ -73,6 +75,6 @@ export function PerformanceCard({ performance }: PerformanceCardProps) {
           {formatPriceRange(performance.minPrice, performance.maxPrice)}
         </p>
       </div>
-    </article>
+    </Link>
   )
 }

@@ -1,4 +1,4 @@
-import type { PerformanceSummary } from '@/features/catalog/types'
+import type { PerformanceDetail, PerformanceSummary } from '@/features/catalog/types'
 
 // 프로토타입용 더미 데이터. 실 데이터는 SP2에서 GET /api/performances 로 교체.
 // posterImageUrl: Unsplash 고정 photo-id 직링크(hotlink 가능한 CDN URL, source.unsplash.com 랜덤
@@ -154,3 +154,61 @@ export const dummyPerformances: PerformanceSummary[] = [
     maxPrice: 55000,
   },
 ]
+
+// 공연 상세(GET /api/performances/:id) 목업. 목록 fixture 중 id 1~3에 대해서만 상세를 갖춘다 —
+// 나머지 id는 상세 화면 404(존재하지 않는 공연) 케이스 확인용으로 남겨둔다.
+export const dummyPerformanceDetails: Record<number, PerformanceDetail> = {
+  1: {
+    ...dummyPerformances[0],
+    description:
+      '데뷔 이래 가장 화려한 무대 연출로 돌아오는 아이유의 단독 콘서트. ' +
+      '"The Golden Hour"라는 타이틀처럼, 하루 중 가장 아름다운 빛의 시간을 함께 나누는 공연입니다. ' +
+      '히트곡부터 신곡까지 3시간 가까운 러닝타임으로 채워집니다.',
+    runningTimeMinutes: 170,
+    sessions: [
+      { id: 101, sessionAt: '2026-09-12T19:00:00+09:00', bookingOpenAt: '2026-08-10T14:00:00+09:00', status: 'ON_SALE' },
+      { id: 102, sessionAt: '2026-09-13T18:00:00+09:00', bookingOpenAt: '2026-08-10T14:00:00+09:00', status: 'ON_SALE' },
+    ],
+    seatGrades: [
+      { name: 'VIP', price: 165000 },
+      { name: 'R', price: 143000 },
+      { name: 'S', price: 121000 },
+      { name: 'A', price: 110000 },
+    ],
+  },
+  2: {
+    ...dummyPerformances[1],
+    description:
+      '전 세계 6,500만 관객이 감동한 빅토르 위고 원작의 대서사. ' +
+      '장발장의 구원과 혁명의 시대를 관통하는 넘버들이 라이브 오케스트라와 함께 펼쳐집니다.',
+    runningTimeMinutes: 175,
+    sessions: [
+      { id: 201, sessionAt: '2026-08-01T19:30:00+09:00', bookingOpenAt: '2026-06-15T14:00:00+09:00', status: 'ON_SALE' },
+      { id: 202, sessionAt: '2026-08-02T14:00:00+09:00', bookingOpenAt: '2026-06-15T14:00:00+09:00', status: 'SOLD_OUT' },
+      { id: 203, sessionAt: '2026-11-29T19:30:00+09:00', bookingOpenAt: '2026-10-01T14:00:00+09:00', status: 'SCHEDULED' },
+    ],
+    seatGrades: [
+      { name: 'VIP', price: 180000 },
+      { name: 'R', price: 150000 },
+      { name: 'S', price: 110000 },
+      { name: 'A', price: 70000 },
+    ],
+  },
+  3: {
+    ...dummyPerformances[2],
+    description:
+      '셰익스피어 4대 비극의 정점, <햄릿>을 소극장의 밀도 높은 연출로 재해석했습니다. ' +
+      '복수와 광기, 존재에 대한 질문을 배우들의 밀착 연기로 그려냅니다.',
+    runningTimeMinutes: 130,
+    sessions: [
+      { id: 301, sessionAt: '2026-10-05T19:30:00+09:00', bookingOpenAt: '2026-09-01T14:00:00+09:00', status: 'SCHEDULED' },
+      { id: 302, sessionAt: '2026-10-12T19:30:00+09:00', bookingOpenAt: '2026-09-01T14:00:00+09:00', status: 'SCHEDULED' },
+      { id: 303, sessionAt: '2026-10-26T15:00:00+09:00', bookingOpenAt: '2026-09-01T14:00:00+09:00', status: 'SCHEDULED' },
+    ],
+    seatGrades: [
+      { name: 'R', price: 65000 },
+      { name: 'S', price: 55000 },
+      { name: 'A', price: 45000 },
+    ],
+  },
+}

@@ -21,3 +21,53 @@ export interface PerformanceSummary {
   /** 여러 좌석 등급(seat_grade) 중 최고가 (원) */
   maxPrice: number
 }
+
+// session.status는 performance.status와 값 집합이 다르다(SOLD_OUT 추가) — 별도 타입으로 분리.
+export type SessionStatus = 'SCHEDULED' | 'ON_SALE' | 'SOLD_OUT' | 'CLOSED'
+
+export interface SessionSummary {
+  id: number
+  /** 공연 회차 시각 (ISO datetime) */
+  sessionAt: string
+  /** 예매 오픈 시각 (ISO datetime) */
+  bookingOpenAt: string
+  status: SessionStatus
+}
+
+export interface SeatGradePrice {
+  name: string
+  price: number
+}
+
+export interface PerformanceDetail extends PerformanceSummary {
+  description: string
+  runningTimeMinutes: number
+  sessions: SessionSummary[]
+  seatGrades: SeatGradePrice[]
+}
+
+// session_seat.status는 DB엔 AVAILABLE/SOLD만 존재한다(HELD 없음 — 임시 선점은 Redis에만 있고
+// 이 STEP에선 다루지 않는다. FRONTEND.md 5절②).
+export type SeatStatus = 'AVAILABLE' | 'SOLD'
+
+// GET /api/sessions/{id}/seats/summary — 배치도 로드 전에 먼저 보여주는 등급별 잔여 요약.
+export interface SeatGradeSummary {
+  name: string
+  price: number
+  remaining: number
+  total: number
+}
+
+// GET /api/sessions/{id}/seats — session_seat + venue_seat 조인 결과.
+// posX/posY는 venue_seat의 구역 내부 로컬 좌표(1-base)이며 불변이다 — 구역별 화면 배치 오프셋은
+// SeatMap 컴포넌트가 section 값을 기준으로 계산한다.
+export interface SeatMapSeat {
+  id: number
+  section: string
+  rowLabel: string
+  seatNumber: number
+  posX: number
+  posY: number
+  gradeName: string
+  status: SeatStatus
+}
