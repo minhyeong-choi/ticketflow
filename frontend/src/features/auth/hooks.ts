@@ -1,8 +1,8 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/api/queryKeys'
 import { authApi } from './api'
 import { useAuthStore } from './store'
-import type { LoginRequest, SignupRequest } from './types'
+import type { ChangePasswordRequest, LoginRequest, SignupRequest, UpdateProfileRequest } from './types'
 
 export function useSignup() {
   return useMutation({
@@ -34,5 +34,29 @@ export function useMe() {
     queryKey: queryKeys.auth.me,
     queryFn: authApi.fetchMe,
     enabled: !!accessToken,
+  })
+}
+
+// 좌석 선점/해제/확정과 달리 프로필 수정은 도메인 동시성 제약이 없지만, 팀 관례상 뮤테이션은
+// retry:0으로 통일한다(중복 제출 방지).
+export function useUpdateProfile() {
+  const updateUser = useAuthStore((s) => s.updateUser)
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (payload: UpdateProfileRequest) => authApi.updateMe(payload),
+    retry: 0,
+    onSuccess: (user) => {
+      // Header 등은 useMe()가 아니라 authStore.user를 직접 구독하므로 스토어를 즉시 갱신한다.
+      updateUser(user)
+      queryClient.invalidateQueries({ queryKey: queryKeys.auth.me })
+    },
+  })
+}
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (payload: ChangePasswordRequest) => authApi.changePassword(payload),
+    retry: 0,
   })
 }
