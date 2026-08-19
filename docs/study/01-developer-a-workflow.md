@@ -26,28 +26,28 @@
 
 ## 전체 일정
 
-| 주차 | 할 일 | B에게 미치는 영향 |
-|---|---|---|
-| 1~2 | `global/`(+ADMIN 인가) 확정 → Base·`User`·`Payment` 엔티티 → **인증(JWT) + 회원정보 수정(FR-A6/A7)** | global·`User`가 없으면 B는 착수 자체가 불가 |
-| 3~4 | 프론트 골격 + 인증 화면 + 카탈로그 화면(Mock) + Testcontainers + springdoc | SP2에서 B의 실 API로 교체 |
-| 5~6 | 대기실 프론트 + **Mock 결제(`payment`)** | 결제 시그니처가 B의 7~8주차 예매 확정 조건 |
-| 7~8 | 예매 플로우 프론트 + 결제 연동 | |
-| 9~10 | 알림/마이페이지 + **회원정보 수정 화면(FR-F8)** + **관리자 화면(FR-F9, P2)** + UX 마무리 | F9는 11주차 부하 테스트와 상충 시 우선 포기 |
-| 11~12 | 대량 테스트 계정 생성·결과 시각화 / 마무리 (공동) | |
+| 주차 | 할 일 | B에게 미치는 영향 | 상태 |
+|---|---|---|---|
+| 1~2 | `global/`(+ADMIN 인가) 확정 → Base·`User`·`Payment` 엔티티 → **인증(JWT) + 회원정보 수정(FR-A6/A7)** | global·`User`가 없으면 B는 착수 자체가 불가 | ✅ 완료 |
+| 3~4 | 프론트 골격 + 인증 화면 + 카탈로그 화면(Mock) + Testcontainers + springdoc | SP2에서 B의 실 API로 교체 | ✅ 완료 |
+| 5~6 | 대기실 프론트 + **Mock 결제(`payment`)** | 결제 시그니처가 B의 7~8주차 예매 확정 조건 | 🔶 Mock 결제 PR 리뷰 대기 · 대기실 프론트 미착수 |
+| 7~8 | 예매 플로우 프론트 + 결제 연동 | | ⬜ 미착수 |
+| 9~10 | 알림/마이페이지 + **회원정보 수정 화면(FR-F8)** + **관리자 화면(FR-F9, P2)** + UX 마무리 | F9는 11주차 부하 테스트와 상충 시 우선 포기 | ⬜ 미착수 (백엔드 PATCH API는 1~2주차에 이미 완료) |
+| 11~12 | 대량 테스트 계정 생성·결과 시각화 / 마무리 (공동) | | ⬜ 미착수 |
 
 ## B와 주고받는 계약 (미리 알아두세요)
 
-| 계약 | 제공 | 사용 | 언제까지 |
-|---|---|---|---|
-| `ApiResponse` / `ErrorCode` / `BusinessException` / `GlobalExceptionHandler` | **A** | B | 1주차 Day 1 |
-| `BaseCreatedEntity` / `BaseTimeEntity` | **A** | B (엔티티 8종) | 1주차 Day 1 |
-| `User` 엔티티 | **A** | B (`Booking`이 `@ManyToOne` 참조) | 1주차 Day 2 |
-| JWT 인증 + 인증 주체에서 `userId` 꺼내는 방법 | **A** | B (모든 인증 필요 API) | SP1 (2주차 말) |
-| `PaymentService.pay(...)` 시그니처 | **A** | B (`BookingFacade`가 호출) | 6주차 말 |
-| `/api/admin/**` → `hasRole('ADMIN')` 인가 규칙 | **A**(`SecurityConfig` 소유) | B (관리자 CRUD가 이 화이트리스트에 얹힘) | SP2 (4주차 말) |
-| 시드 데이터 (+ **ADMIN 계정 1개**) | B | **A** (프론트가 볼 실데이터, 관리자 로그인) | 2주차 말 |
-| OpenAPI 명세 (카탈로그·대기실·예매·**관리자 CRUD**) | B | **A** (프론트 Mock→실 API, 관리자 화면은 P2) | SP2 (4주차 말) |
-| CORS 허용 오리진 | **A**(`SecurityConfig` 소유) | — | 3주차 |
+| 계약 | 제공 | 사용 | 언제까지 | 상태 |
+|---|---|---|---|---|
+| `ApiResponse` / `ErrorCode` / `BusinessException` / `GlobalExceptionHandler` | **A** | B | 1주차 Day 1 | ✅ 완료 |
+| `BaseCreatedEntity` / `BaseTimeEntity` | **A** | B (엔티티 8종) | 1주차 Day 1 | ✅ 완료 |
+| `User` 엔티티 | **A** | B (`Booking`이 `@ManyToOne` 참조) | 1주차 Day 2 | ✅ 완료 |
+| JWT 인증 + 인증 주체에서 `userId` 꺼내는 방법 | **A** | B (모든 인증 필요 API) | SP1 (2주차 말) | ✅ 완료 |
+| `PaymentService.pay(...)` 시그니처 | **A** | B (`BookingFacade`가 호출) | 6주차 말 | ✅ 완료 (PR #26 리뷰 대기) |
+| `/api/admin/**` → `hasRole('ADMIN')` 인가 규칙 | **A**(`SecurityConfig` 소유) | B (관리자 CRUD가 이 화이트리스트에 얹힘) | SP2 (4주차 말) | 🔶 진행 중 — PR #24에서 추가했으나 `"api/admin/**"` 슬래시 누락 버그 발견, 수정 필요 |
+| 시드 데이터 (+ **ADMIN 계정 1개**) | B | **A** (프론트가 볼 실데이터, 관리자 로그인) | 2주차 말 | ⬜ B 진행 상황 별도 확인 필요 |
+| OpenAPI 명세 (카탈로그·대기실·예매·**관리자 CRUD**) | B | **A** (프론트 Mock→실 API, 관리자 화면은 P2) | SP2 (4주차 말) | ⬜ B 진행 상황 별도 확인 필요 |
+| CORS 허용 오리진 | **A**(`SecurityConfig` 소유) | — | 3주차 | ✅ 완료 (`localhost:5173`) |
 
 ---
 
@@ -55,7 +55,7 @@
 
 같은 기간에 B는 **카탈로그·예매 엔티티 8종과 시드 데이터**를 만듭니다. B의 엔티티는 A의 `global/common/Base*Entity`와 `User`에 의존하므로, **A의 Day 1~2가 B의 출발선입니다.**
 
-## Day 1: `global/` 공통 인프라 확정 ★ 우선순위 1위
+## Day 1: `global/` 공통 인프라 확정 ★ 우선순위 1위 ✅ 완료
 
 **A와 B가 모두 이 위에 코드를 얹습니다.** 늦게 확정될수록 나중에 전부 고쳐야 하니 **가장 먼저, 하루 만에** 끝내세요. 완벽하지 않아도 됩니다 — 확정되는 것 자체가 가치입니다.
 
@@ -96,7 +96,7 @@ domain/booking/exception/BookingErrorCode.java         ← B만 수정 (B001~)
 
 ---
 
-## Day 1~2: 공통 시간 매핑 + `User` / `Payment` 엔티티 ★ B의 컴파일 조건
+## Day 1~2: 공통 시간 매핑 + `User` / `Payment` 엔티티 ★ B의 컴파일 조건 ✅ 완료
 
 엔티티 10종 중 A가 쓰는 것은 **`User`, `Payment` 2종과 공통 부모 2종**입니다. 나머지 8종(`Venue`/`VenueSeat`/`Performance`/`SeatGrade`/`PerformanceSession`/`SessionSeat`/`Booking`/`BookingSeat`)은 **B가 씁니다**(ROADMAP "(1) JPA 엔티티 작성" 참고).
 
@@ -208,7 +208,7 @@ docker compose up -d
 
 ---
 
-## Day 3~7: 회원가입 / 로그인 / JWT
+## Day 3~7: 회원가입 / 로그인 / JWT ✅ 완료
 
 ### 만들 파일
 
@@ -490,7 +490,7 @@ curl -i localhost:8080/api/users/me
 
 ---
 
-## Day 8~10: API 문서 도구 도입 (springdoc-openapi)
+## Day 8~10: API 문서 도구 도입 (springdoc-openapi) ✅ 완료
 
 로드맵상 3~4주차 항목이지만 **1~2주차로 당깁니다.** 이유는 문서화가 아니라 **A와 B 사이의 인터페이스 계약** 때문입니다. 2인 병렬 개발에서 API 스펙은 문서가 아니라 "개발 순서를 푸는 도구"입니다. A는 이 명세를 보고 프론트를 **Mock으로 선행**하고, SP2에서 B의 실 API로 갈아끼웁니다.
 
@@ -510,11 +510,11 @@ implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5'
 
 ---
 
-# 3~4주차 — 프론트 골격 + Testcontainers → SP2
+# 3~4주차 — 프론트 골격 + Testcontainers → SP2 ✅ 완료
 
 이 기간에 B는 카탈로그 조회 API를 만듭니다. A는 **프론트 골격**과 **테스트 기반**에 집중하세요.
 
-## (1) 프론트 셋업
+## (1) 프론트 셋업 ✅ 완료
 
 - **확정**: 같은 레포 `frontend/`, **React + TypeScript + Vite**. 디렉터리 구조·기술 선택·설계 이슈는 [`docs/FRONTEND.md`](../FRONTEND.md)를 그대로 따르세요
 - **CORS 설정**은 A의 `SecurityConfig`에 이미 있습니다. 프론트 개발 서버 포트를 정하면 `setAllowedOrigins`를 맞추세요
@@ -530,7 +530,7 @@ implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.5'
 
 **2번부터는 Mock으로 먼저 만드세요.** B의 API 완성을 기다리면 4주차를 통째로 날립니다. B의 명세만 있으면 응답 모양은 확정이므로, 연결만 나중에 교체하면 됩니다.
 
-## (2) Testcontainers 도입
+## (2) Testcontainers 도입 ✅ 완료
 
 ### 문제
 
@@ -586,9 +586,9 @@ class AuthServiceTest extends IntegrationTestSupport { ... }
 
 ---
 
-# 5~6주차 — 대기실 프론트 + Mock 결제 → SP3
+# 5~6주차 — 대기실 프론트 + Mock 결제 → SP3 🔶 진행 중
 
-## (1) 대기실 프론트
+## (1) 대기실 프론트 ⬜ 미착수
 
 B가 같은 기간에 대기실 백엔드를 만듭니다.
 
@@ -598,7 +598,7 @@ B가 같은 기간에 대기실 백엔드를 만듭니다.
 
 > 폴링 응답이 곧 **heartbeat**입니다(B의 설계). 사용자가 탭을 닫으면 폴링이 끊기고 30초 뒤 큐에서 자동 제거됩니다. **프론트가 폴링을 멈추면 그 사용자는 유령 취급된다**는 점을 알고 화면을 만드세요.
 
-## (2) Mock 결제 (`payment`) ★ B의 7~8주차 조건
+## (2) Mock 결제 (`payment`) ★ B의 7~8주차 조건 ✅ 완료 (PR #26 리뷰 대기)
 
 B의 예매 확정 흐름(T1 → **결제** → T2)이 A의 `PaymentService`를 호출합니다. **6주차 말까지 시그니처를 확정해 머지하세요.**
 
@@ -632,7 +632,7 @@ public record PaymentResult(boolean success, String transactionId, OffsetDateTim
 
 ---
 
-# 7~8주차 — 예매 플로우 프론트 + 결제 연동 → SP4
+# 7~8주차 — 예매 플로우 프론트 + 결제 연동 → SP4 ⬜ 미착수
 
 B가 좌석 선점·예매 확정을 만드는 동안, A는 그 흐름을 화면으로 연결합니다.
 
@@ -656,7 +656,7 @@ B의 7~8주차 동시성 통합 테스트에 함께 참여하면 A도 이 프로
 
 ---
 
-# 9~10주차 — 알림 / 마이페이지 + UX 마무리 → SP5
+# 9~10주차 — 알림 / 마이페이지 + UX 마무리 → SP5 ⬜ 미착수
 
 - 예매 내역(마이페이지) 화면 — B의 `GET /api/bookings` 연동
 - **회원정보 수정 화면(FR-F8)** — 1~2주차에 만든 `PATCH /api/users/me`·`.../password`에 바로 연동. 마이페이지 내
@@ -668,7 +668,7 @@ B의 7~8주차 동시성 통합 테스트에 함께 참여하면 A도 이 프로
 
 ---
 
-# 11~12주차 — 공동 작업
+# 11~12주차 — 공동 작업 ⬜ 미착수
 
 - **[A] 대량 테스트 유저/토큰 사전 생성** — 동시 수천 명 시나리오는 계정이 미리 있어야 합니다. **11주차에 몰아서 하면 늦습니다. 9~10주차에 준비하세요.**
 - **[A] 부하 테스트 결과 시각화**
