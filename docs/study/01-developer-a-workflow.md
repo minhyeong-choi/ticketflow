@@ -30,9 +30,9 @@
 |---|---|---|---|
 | 1~2 | `global/`(+ADMIN 인가) 확정 → Base·`User`·`Payment` 엔티티 → **인증(JWT) + 회원정보 수정(FR-A6/A7)** | global·`User`가 없으면 B는 착수 자체가 불가 | ✅ 완료 |
 | 3~4 | 프론트 골격 + 인증 화면 + 카탈로그 화면(Mock) + Testcontainers + springdoc | SP2에서 B의 실 API로 교체 | ✅ 완료 |
-| 5~6 | 대기실 프론트 + **Mock 결제(`payment`)** | 결제 시그니처가 B의 7~8주차 예매 확정 조건 | 🔶 Mock 결제 PR 리뷰 대기 · 대기실 프론트 미착수 |
-| 7~8 | 예매 플로우 프론트 + 결제 연동 | | ⬜ 미착수 |
-| 9~10 | 알림/마이페이지 + **회원정보 수정 화면(FR-F8)** + **관리자 화면(FR-F9, P2)** + UX 마무리 | F9는 11주차 부하 테스트와 상충 시 우선 포기 | ⬜ 미착수 (백엔드 PATCH API는 1~2주차에 이미 완료) |
+| 5~6 | 대기실 프론트 + **Mock 결제(`payment`)** | 결제 시그니처가 B의 7~8주차 예매 확정 조건 | ✅ 완료 — Mock 결제 병합 완료, 대기실 프론트(폴링/heartbeat/포기 버튼) Mock 기준 완성 |
+| 7~8 | 예매 플로우 프론트 + 결제 연동 | | ✅ Mock 기준 완료 — 좌석선택→선점→카운트다운→확정→완료, 409/422 에러 처리 포함. 결제는 PRD U5(단일 요청 확정) 설계상 별도 화면 없이 확정 요청에 포함되어 추가 연동 불필요. B의 실 API 전환은 SP4 대기 |
+| 9~10 | 알림/마이페이지 + **회원정보 수정 화면(FR-F8)** + **관리자 화면(FR-F9, P2)** + UX 마무리 | F9는 11주차 부하 테스트와 상충 시 우선 포기 | ✅ Mock 기준 완료 — 회원정보 수정(FR-F8)은 실 API, 예매내역/알림 조회/관리자 CRUD는 Mock. "전체 플로우 통과 확인"은 별도 QA로 진행 |
 | 11~12 | 대량 테스트 계정 생성·결과 시각화 / 마무리 (공동) | | ⬜ 미착수 |
 
 ## B와 주고받는 계약 (미리 알아두세요)
@@ -43,8 +43,8 @@
 | `BaseCreatedEntity` / `BaseTimeEntity` | **A** | B (엔티티 8종) | 1주차 Day 1 | ✅ 완료 |
 | `User` 엔티티 | **A** | B (`Booking`이 `@ManyToOne` 참조) | 1주차 Day 2 | ✅ 완료 |
 | JWT 인증 + 인증 주체에서 `userId` 꺼내는 방법 | **A** | B (모든 인증 필요 API) | SP1 (2주차 말) | ✅ 완료 |
-| `PaymentService.pay(...)` 시그니처 | **A** | B (`BookingFacade`가 호출) | 6주차 말 | ✅ 완료 (PR #26 리뷰 대기) |
-| `/api/admin/**` → `hasRole('ADMIN')` 인가 규칙 | **A**(`SecurityConfig` 소유) | B (관리자 CRUD가 이 화이트리스트에 얹힘) | SP2 (4주차 말) | 🔶 진행 중 — PR #24에서 추가했으나 `"api/admin/**"` 슬래시 누락 버그 발견, 수정 필요 |
+| `PaymentService.pay(...)` 시그니처 | **A** | B (`BookingFacade`가 호출) | 6주차 말 | ✅ 완료 (병합됨) |
+| `/api/admin/**` → `hasRole('ADMIN')` 인가 규칙 | **A**(`SecurityConfig` 소유) | B (관리자 CRUD가 이 화이트리스트에 얹힘) | SP2 (4주차 말) | ✅ 완료 — 슬래시 누락 버그 수정 후 병합 확인 |
 | 시드 데이터 (+ **ADMIN 계정 1개**) | B | **A** (프론트가 볼 실데이터, 관리자 로그인) | 2주차 말 | ⬜ B 진행 상황 별도 확인 필요 |
 | OpenAPI 명세 (카탈로그·대기실·예매·**관리자 CRUD**) | B | **A** (프론트 Mock→실 API, 관리자 화면은 P2) | SP2 (4주차 말) | ⬜ B 진행 상황 별도 확인 필요 |
 | CORS 허용 오리진 | **A**(`SecurityConfig` 소유) | — | 3주차 | ✅ 완료 (`localhost:5173`) |
@@ -586,17 +586,17 @@ class AuthServiceTest extends IntegrationTestSupport { ... }
 
 ---
 
-# 5~6주차 — 대기실 프론트 + Mock 결제 → SP3 🔶 진행 중
+# 5~6주차 — 대기실 프론트 + Mock 결제 → SP3 ✅ Mock 기준 완료
 
-## (1) 대기실 프론트 ⬜ 미착수
+## (1) 대기실 프론트 ✅ 완료 (Mock 기준)
 
-B가 같은 기간에 대기실 백엔드를 만듭니다.
+B의 대기실 백엔드는 아직 없어(패키지 자체가 미착수), `src/mocks/handlers/waiting.ts`를 기준으로 **프론트를 Mock으로 완성**했습니다(`WaitingRoomPage.tsx`, `features/waiting/*`).
 
-- 대기 순번 화면 — **폴링 우선**(SSE는 여유 있을 때). 폴링 주기가 너무 짧으면 그 자체가 부하가 됩니다
-- 입장 허용 시 좌석 선택 화면으로 전환하는 UX
-- 대기 포기 버튼
+- 대기 순번 화면 — **폴링 방식**(`useWaitingStatus`, 4초 간격), 탭 포커스 복귀 시 즉시 재조회(`useVisibilityRefetch`)까지 구현 완료
+- 입장 허용(`ENTERED`) 시 입장 토큰을 저장하고 좌석 선택 화면으로 자동 전환
+- 대기 포기 버튼(`useLeaveWaiting`) 구현 완료, 401 만료 시 별도 안내 UI 포함
 
-> 폴링 응답이 곧 **heartbeat**입니다(B의 설계). 사용자가 탭을 닫으면 폴링이 끊기고 30초 뒤 큐에서 자동 제거됩니다. **프론트가 폴링을 멈추면 그 사용자는 유령 취급된다**는 점을 알고 화면을 만드세요.
+> 폴링 응답이 곧 **heartbeat**라는 전제(B의 설계)로 구현했습니다. 단, 폴링 주기(4초)와 실제 대기열 TTL의 비율은 아직 B와 합의되지 않은 잠정값입니다(`FRONTEND.md` 계약 항목 C5) — B의 대기실 백엔드가 나오면 이 값을 다시 맞춰야 합니다.
 
 ## (2) Mock 결제 (`payment`) ★ B의 7~8주차 조건 ✅ 완료 (PR #26 리뷰 대기)
 
@@ -632,14 +632,14 @@ public record PaymentResult(boolean success, String transactionId, OffsetDateTim
 
 ---
 
-# 7~8주차 — 예매 플로우 프론트 + 결제 연동 → SP4 ⬜ 미착수
+# 7~8주차 — 예매 플로우 프론트 + 결제 연동 → SP4 ✅ Mock 기준 완료
 
-B가 좌석 선점·예매 확정을 만드는 동안, A는 그 흐름을 화면으로 연결합니다.
+B의 좌석 선점·예매 확정 백엔드는 아직 없지만(엔티티만 존재, 서비스/컨트롤러 미착수), 5~6주차 스캐폴딩 커밋에서 **예매 플로우 전체를 Mock으로 앞당겨 완성**했습니다(`SeatMapPage.tsx`, `BookingCompletePage.tsx`, `features/booking/*`).
 
-- 좌석 선택 → 선점 → 결제 → 확정 화면
-- **선점 만료 타이머 UX** — 좌석 락 TTL(7분)에 맞춘 카운트다운. 만료되면 좌석 선택 화면으로 되돌립니다
-- **이미 팔린 좌석 에러 처리** — `409` + `B409`("이미 예매된 좌석입니다") 응답을 사용자 언어로 번역
-- `/api/payments/**` 화면 연동
+- 좌석 선택 → 선점 → 확정 → 완료 화면 구현 완료 (최대 4석 제한, 세션스토리지 기반 선점 상태 복구 포함)
+- **선점 만료 타이머 UX** — 서버가 내려주는 절대시각(`holdExpiresAt`)과 클라이언트-서버 시각차(`clockOffsetMs`)를 반영한 카운트다운 완료. 만료 시 자동으로 좌석 선택 화면 상태를 초기화
+- **이미 팔린 좌석 에러 처리** — `SEAT_ALREADY_BOOKED`/`SEAT_ALREADY_HELD`/`SEAT_HOLD_EXPIRED`/`PAYMENT_FAILED` 에러 코드를 `lib/errorMessages.ts`에서 사용자 메시지로 번역, Mock에서 확정 시 20% 확률로 결제 실패(`PAYMENT_FAILED`)를 재현해 재시도 흐름까지 검증
+- **결제 연동**: PRD U5(단일 요청 확정) 설계에 따라 hold 검증+Mock 결제+확정이 서버 한 번의 호출로 처리되므로, 별도의 `/api/payments/**` 화면은 만들지 않음(설계상 불필요로 확인)
 
 ### A/B가 맞춰야 하는 수치
 
@@ -656,15 +656,14 @@ B의 7~8주차 동시성 통합 테스트에 함께 참여하면 A도 이 프로
 
 ---
 
-# 9~10주차 — 알림 / 마이페이지 + UX 마무리 → SP5 ⬜ 미착수
+# 9~10주차 — 알림 / 마이페이지 + UX 마무리 → SP5 ✅ Mock 기준 완료
 
-- 예매 내역(마이페이지) 화면 — B의 `GET /api/bookings` 연동
-- **회원정보 수정 화면(FR-F8)** — 1~2주차에 만든 `PATCH /api/users/me`·`.../password`에 바로 연동. 마이페이지 내
-- 알림 목록 화면 — B의 `notification` 적재 결과 조회
-- 전체 UX 다듬기, 프론트 버그 정리
-- **대기실 → 좌석 선택 → 예매 → 완료 전체 플로우**를 처음부터 끝까지 한 번 통과시켜 보세요 (B와 협업)
+- 예매 내역(마이페이지) 화면 — `MyBookingsPage.tsx` 완료. B의 실제 `GET /api/bookings`가 아직 없어 현재는 Mock(`bookingStore`) 조회
+- **회원정보 수정 화면(FR-F8)** — `ProfileEditPage.tsx` 완료, `PATCH /api/users/me`·`.../password` **실제 백엔드**에 연동됨(Mock 아님)
+- 알림 목록 화면 — `NotificationsPage.tsx` 완료, Mock 기반 읽기 전용(읽음 처리는 이번 STEP 범위 밖으로 보류)
+- **대기실 → 좌석 선택 → 예매 → 완료 전체 플로우**를 처음부터 끝까지 통과시키는 수동 QA는 별도 작업으로 진행 예정 (B의 실 API가 없어 Mock 기준으로 수행)
 
-**[선택·P2] 관리자 카탈로그 관리 화면(FR-F9)** — B의 `/api/admin/**`(FR-M1~M3) 연동, `ADMIN` 계정 전용 라우트. **버퍼 구간의 마지막 항목이며, 11주차 부하 테스트 준비와 상충하면 가장 먼저 포기**합니다(PRD R9). 화면에서 숨겨도 서버가 `hasRole('ADMIN')`로 최종 차단하므로 보안은 서버가 책임집니다.
+**[선택·P2] 관리자 카탈로그 관리 화면(FR-F9)** — `AdminPerformancesPage.tsx`/`PerformanceForm.tsx` 완료, `ADMIN` 계정 전용 라우트로 클라이언트 가드까지 적용됨. B의 실제 `/api/admin/**`(FR-M1~M3)가 아직 없어 현재는 Mock 기준(`mocks/handlers/admin.ts`)이며, 경로 형태는 추정치(B와 미확정).
 
 ---
 
